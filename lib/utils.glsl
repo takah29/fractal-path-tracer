@@ -69,29 +69,30 @@ vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
     return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
 }
 
-vec3 get_brdf_ray(in vec3 n, const in vec3 rd, const in Material m, inout bool specular_bounce, inout float seed) {
+vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
+                  inout float seed) {
     specular_bounce = false;
 
-    if (m.type == 2) {  // reflaction
+    if (mtl.type == 2) {  // reflaction
         vec3 ref;
-        if (hash1(seed) < m.color_param.w) {
+        if (hash1(seed) < mtl.color_param.w) {
             specular_bounce = true;
-            ref = reflect(rd, n);
+            ref = reflect(ray_dir, normal);
         } else {
-            ref = cos_weighted_random_hemisphere_direction(n, seed);
+            ref = cos_weighted_random_hemisphere_direction(normal, seed);
         }
         return ref;
-    } else if (m.type == 3) {  // refraction
+    } else if (mtl.type == 3) {  // refraction
         specular_bounce = true;
 
-        float n1, n2, ndotr = dot(rd, n);
+        float n1, n2, ndotr = dot(ray_dir, normal);
 
         if (ndotr > 0.) {
             n1 = 1.0;
-            n2 = m.color_param.w;
-            n = -n;
+            n2 = mtl.color_param.w;
+            normal = -normal;
         } else {
-            n1 = m.color_param.w;
+            n1 = mtl.color_param.w;
             n2 = 1.0;
         }
 
@@ -99,14 +100,16 @@ vec3 get_brdf_ray(in vec3 n, const in vec3 rd, const in Material m, inout bool s
         r0 *= r0;
         float fresnel = r0 + (1. - r0) * pow(1.0 - abs(ndotr), 5.);
 
-        vec3 ref = refract(rd, n, n2 / n1);
-        if (ref == vec3(0) || hash1(seed) < fresnel) {
-            ref = reflect(rd, n);
+        vec3 ref;
+        if (hash1(seed) < fresnel) {
+            ref = reflect(ray_dir, normal);
+        }else{
+            ref = refract(ray_dir, normal, n2 / n1);
         }
 
         return ref;
     } else {  // diffuse
-        return cos_weighted_random_hemisphere_direction(n, seed);
+        return cos_weighted_random_hemisphere_direction(normal, seed);
     }
 }
 

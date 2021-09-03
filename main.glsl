@@ -27,7 +27,7 @@ const Plane l_plane = Plane(vec3(1.0, 0.0, 0.0), -3.0);
 const Plane t_plane = Plane(vec3(0.0, -1.0, 0.0), -3.0);
 const Plane r_plane = Plane(vec3(-1.0, 0.0, 0.0), -3.0);
 const Plane[5] planes = Plane[](b_plane, d_plane, l_plane, t_plane, r_plane);
-const int[5] p_mtl_ids = int[](1, 1, 2, 1, 3);
+const int[5] p_mtl_ids = int[](1, 4, 2, 1, 3);
 
 const Sphere l_sphere = Sphere(vec3(-1.0, -2.0, -1.0), 1.0);
 const Sphere r_sphere = Sphere(vec3(1.5, -2.0, 0.0), 1.0);
