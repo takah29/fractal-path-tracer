@@ -61,7 +61,7 @@ float distance_func(in Torus torus, in vec3 p) {
     vec2 q = vec2(length(p.xz - torus.center.xz) - torus.radius_a, p.y - torus.center.y);
     return length(q) - torus.radius_b;
 }
-#define ITER 64
+#define ITER_TORUS 64
 float intersect(in Torus torus, in Ray ray) {
     float d = 0.0;
     float t = 0.0;
@@ -69,7 +69,7 @@ float intersect(in Torus torus, in Ray ray) {
 
     // marching loop
     int s;
-    for (s = 0; s < ITER; s++) {
+    for (s = 0; s < ITER_TORUS; s++) {
         d = distance_func(torus, pos);
         t += d;
         pos = ray.o + t * ray.d;
@@ -92,5 +92,74 @@ void update_hp(in Torus torus, in Ray ray, in float t, in int color_id, inout Hi
     if (t > EPS && t < hp.t) {
         hp = HitPoint(t, color_id);
         normal = get_normal(torus, ray.o + t * ray.d);
+    }
+}
+
+// MandelBox
+struct MandelBox {
+    float scale;
+    float min_radius;
+    float fixed_radius;
+    int iterations;
+};
+float distance_estimate(in MandelBox mb, in vec3 p) {
+    vec3 z = p;
+    float dr = 1.0;
+    for (int i = 0; i < mb.iterations; i++) {
+        // Box Fold
+        float folding_limit = 1.0;
+        z = clamp(z, -folding_limit, folding_limit) * 2.0 - z;
+
+        // Sphere Fold
+        float m2 = mb.min_radius * mb.min_radius;
+        float f2 = mb.fixed_radius * mb.fixed_radius;
+        float r2 = dot(z, z);
+        if (r2 < m2) {
+            float temp = (f2 / m2);
+            z *= temp;
+            dr *= temp;
+        } else if (r2 < f2) {
+            float temp = (f2 / r2);
+            z *= temp;
+            dr *= temp;
+        }
+
+        z = mb.scale * z + p;
+        dr = dr * abs(mb.scale) + 1.0;
+    }
+    float r = length(z);
+    return r / abs(dr);
+}
+#define ITER_MANDELBOX 64
+float intersect(in MandelBox mb, in Ray ray) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < ITER_MANDELBOX; s++) {
+        d = distance_estimate(mb, pos);
+        t += d;
+        pos = ray.o + t * ray.d;
+
+        // hit check
+        if (abs(d) < 0.01) {
+            break;
+        }
+    }
+
+    return t;
+}
+vec3 get_normal(in MandelBox mb, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep) + e.yyx * distance_estimate(mb, p + e.yyx * ep) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep) + e.xxx * distance_estimate(mb, p + e.xxx * ep));
+}
+void update_hp(in MandelBox mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d);
     }
 }
