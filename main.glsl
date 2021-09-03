@@ -17,7 +17,7 @@ const Material RED_MTL = Material(vec4(RED * 0.7 + 0.1, 0.0), 1);
 const Material GREEN_MTL = Material(vec4(GREEN * 0.7 + 0.1, 0.0), 1);
 const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.1, 0.0), 1);
 const Material REFLECTION_MTL = Material(vec4(CYAN, 0.3), 2);
-const Material REFRACTION_MTL = Material(vec4(vec3(0.1, 0.0, 0.8), 1.5), 3);
+const Material REFRACTION_MTL = Material(vec4(vec3(0.7, 0.5, 1.0), 1.5), 3);
 Material[7] materials = Material[](LIGHT_MTL, WHITE_MTL, RED_MTL, GREEN_MTL, BLUE_MTL, REFLECTION_MTL, REFRACTION_MTL);
 
 // scene
@@ -58,9 +58,6 @@ HitPoint intersect_scene(in Ray ray, inout vec3 normal) {
     t = intersect(light_sphere, ray);
     update_hp(r_sphere, ray, t, 0, hp, normal);
 
-    // t = intersect(torus, ray);
-    // update_hp(torus, ray, t, 1, hp, normal);
-
     return hp;
 }
 
@@ -71,8 +68,6 @@ bool intersect_shadow(in Ray ray, in float dist) {
     if (t > EPS && t < dist) return true;
     t = intersect(r_sphere, ray);
     if (t > EPS && t < dist) return true;
-    // t = intersect(torus, ray);
-    // if (t > EPS && t < dist) return true;
 
     return false;
 }
@@ -142,10 +137,6 @@ vec3 render(in vec2 p, in Camera camera, in float seed) {
     color /= float(SAMPLES);
     return color;
 }
-
-//-----------------------------------------------------
-// main
-//-----------------------------------------------------
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 q = fragCoord.xy / iResolution.xy;
