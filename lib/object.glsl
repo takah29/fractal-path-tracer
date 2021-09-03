@@ -61,15 +61,14 @@ float distance_func(in Torus torus, in vec3 p) {
     vec2 q = vec2(length(p.xz - torus.center.xz) - torus.radius_a, p.y - torus.center.y);
     return length(q) - torus.radius_b;
 }
-#define ITER_TORUS 64
-float intersect(in Torus torus, in Ray ray) {
+float intersect(in Torus torus, in Ray ray, in int n_iter) {
     float d = 0.0;
     float t = 0.0;
     vec3 pos = ray.o;
 
     // marching loop
     int s;
-    for (s = 0; s < ITER_TORUS; s++) {
+    for (s = 0; s < n_iter; s++) {
         d = distance_func(torus, pos);
         t += d;
         pos = ray.o + t * ray.d;
@@ -130,26 +129,26 @@ float distance_estimate(in MandelBox mb, in vec3 p) {
     float r = length(z);
     return r / abs(dr);
 }
-#define ITER_MANDELBOX 64
-float intersect(in MandelBox mb, in Ray ray) {
+
+float intersect(in MandelBox mb, in Ray ray, in int n_iter) {
     float d = 0.0;
     float t = 0.0;
     vec3 pos = ray.o;
 
     // marching loop
     int s;
-    for (s = 0; s < ITER_MANDELBOX; s++) {
+    for (s = 0; s < n_iter; s++) {
         d = distance_estimate(mb, pos);
         t += d;
         pos = ray.o + t * ray.d;
 
         // hit check
-        if (abs(d) < 0.01) {
-            break;
+        if (abs(d) < t * 0.001) {
+            return t;
         }
     }
 
-    return t;
+    return INF;
 }
 vec3 get_normal(in MandelBox mb, in vec3 p) {
     const float ep = 0.001;
