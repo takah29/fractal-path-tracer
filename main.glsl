@@ -11,13 +11,13 @@ const int MAX_DEPTH = 4;
 const float MOTIONBLURFPS = 12.;
 
 // material
-const Material LIGHT_MTL = Material(vec4(vec3(20.0, 15.0, 10.0), 1.0), 3);
-const Material WHITE_MTL = Material(vec4(GRAY, 0.0), 0);
-const Material RED_MTL = Material(vec4(RED * 0.7 + 0.1, 0.0), 0);
-const Material GREEN_MTL = Material(vec4(GREEN * 0.7 + 0.1, 0.0), 0);
-const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.1, 0.0), 0);
-const Material REFLECTION_MTL = Material(vec4(CYAN, 0.3), 1);
-const Material REFRACTION_MTL = Material(vec4(vec3(0.1, 0.0, 0.8), 1.5), 2);
+const Material LIGHT_MTL = Material(vec4(vec3(20.0, 15.0, 10.0), 1.0), 0);
+const Material WHITE_MTL = Material(vec4(GRAY, 0.0), 1);
+const Material RED_MTL = Material(vec4(RED * 0.7 + 0.1, 0.0), 1);
+const Material GREEN_MTL = Material(vec4(GREEN * 0.7 + 0.1, 0.0), 1);
+const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.1, 0.0), 1);
+const Material REFLECTION_MTL = Material(vec4(CYAN, 0.3), 2);
+const Material REFRACTION_MTL = Material(vec4(vec3(0.1, 0.0, 0.8), 1.5), 3);
 Material[7] materials = Material[](LIGHT_MTL, WHITE_MTL, RED_MTL, GREEN_MTL, BLUE_MTL, REFLECTION_MTL, REFRACTION_MTL);
 
 // scene
@@ -92,7 +92,7 @@ vec3 path_trace(in Ray ray, inout float seed) {
         }
 
         // light
-        if (materials[hp.mtl_id].type == 3) {  // emission
+        if (materials[hp.mtl_id].type == 0) {  // emission
             if (specular_bounce) tcol += fcol * materials[hp.mtl_id].color_param.rgb * amount_of_light;
             return tcol;
         }

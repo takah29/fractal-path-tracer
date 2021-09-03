@@ -26,8 +26,8 @@ struct Ray {
 };
 
 struct Material {
-    vec4 color_param;  // vec3: color, float: param
-    int type;          // 0: diffuse, 1: reflection, 2: refrection, 3: emission
+    vec4 color_param;  // vec3: Color, float: Material specific parameter
+    int type;          // 0: emission, 1: diffuse, 2: reflection, 3: refrection,
 };
 
 struct HitPoint {
@@ -72,7 +72,7 @@ vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
 vec3 get_brdf_ray(in vec3 n, const in vec3 rd, const in Material m, inout bool specular_bounce, inout float seed) {
     specular_bounce = false;
 
-    if (m.type == 1) {  // reflaction
+    if (m.type == 2) {  // reflaction
         vec3 ref;
         if (hash1(seed) < m.color_param.w) {
             specular_bounce = true;
@@ -81,7 +81,7 @@ vec3 get_brdf_ray(in vec3 n, const in vec3 rd, const in Material m, inout bool s
             ref = cos_weighted_random_hemisphere_direction(n, seed);
         }
         return ref;
-    } else if (m.type == 2) {  // refraction
+    } else if (m.type == 3) {  // refraction
         specular_bounce = true;
 
         float n1, n2, ndotr = dot(rd, n);
