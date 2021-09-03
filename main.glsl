@@ -4,7 +4,7 @@
 #iUniform float speed = 4.0 in{0.0, 50.0 }
 #iUniform float focal_length = 9.5 in{1.0, 20.0 }
 #iUniform float dof_size = 0.5 in{0.0, 2.0 }
-#iUniform float amount_of_light = 1.0 in{0.0, 10. }
+#iUniform float light_emission = 1.0 in{0.0, 10. }
 
 // scene parameters
 const int MAX_DEPTH = 4;
@@ -15,7 +15,7 @@ const Material LIGHT_MTL = Material(vec4(vec3(20.0, 15.0, 10.0), 1.0), 0);
 const Material WHITE_MTL = Material(vec4(GRAY, 0.0), 1);
 const Material RED_MTL = Material(vec4(RED * 0.7 + 0.1, 0.0), 1);
 const Material GREEN_MTL = Material(vec4(GREEN * 0.7 + 0.1, 0.0), 1);
-const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.1, 0.0), 1);
+const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.3, 0.0), 1);
 const Material REFLECTION_MTL = Material(vec4(CYAN, 0.3), 2);
 const Material REFRACTION_MTL = Material(vec4(vec3(0.7, 0.5, 1.0), 1.5), 3);
 Material[7] materials = Material[](LIGHT_MTL, WHITE_MTL, RED_MTL, GREEN_MTL, BLUE_MTL, REFLECTION_MTL, REFRACTION_MTL);
@@ -88,7 +88,7 @@ vec3 path_trace(in Ray ray, inout float seed) {
 
         // light
         if (materials[hp.mtl_id].type == 0) {  // emission
-            if (specular_bounce) tcol += fcol * materials[hp.mtl_id].color_param.rgb * amount_of_light;
+            if (specular_bounce) tcol += fcol * materials[hp.mtl_id].color_param.rgb * light_emission;
             return tcol;
         }
 
@@ -111,7 +111,7 @@ vec3 path_trace(in Ray ray, inout float seed) {
             float weight = 2. * (1. - cos_a_max);
 
             tcol +=
-                (fcol * materials[0].color_param.rgb * amount_of_light) * (weight * clamp(dot(nld, normal), 0., 1.));
+                (fcol * materials[0].color_param.rgb * light_emission) * (weight * clamp(dot(nld, normal), 0., 1.));
         }
     }
     return tcol;
