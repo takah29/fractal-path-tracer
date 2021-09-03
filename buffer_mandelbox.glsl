@@ -1,7 +1,7 @@
 #iChannel0 "self"
 #include "lib/object.glsl"
 
-#iUniform float dist = 5.0 in {2.0, 20.0}
+#iUniform float dist = 5.0 in{2.0, 20.0 }
 #iUniform float focal_length = 1.0 in{0.001, 20.0 }
 #iUniform float dof_size = 0.005 in{0.001, 0.5 }
 #iUniform float light_emission = 10.0 in{0.001, 30. }
@@ -17,8 +17,7 @@ const Material RED_MTL = Material(vec4(RED * 0.7 + 0.1, 0.0), 1);
 const Material GREEN_MTL = Material(vec4(GREEN * 0.7 + 0.1, 0.0), 1);
 const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.3, 0.0), 1);
 const Material REFLECTION_MTL = Material(vec4(YELLOW, 0.99), 2);
-const Material REFRACTION_MTL = Material(vec4(vec3(0.7, 0.5, 1.0), 1.5), 3);
-Material[7] materials = Material[](LIGHT_MTL, WHITE_MTL, RED_MTL, GREEN_MTL, BLUE_MTL, REFLECTION_MTL, REFRACTION_MTL);
+Material[6] materials = Material[](LIGHT_MTL, WHITE_MTL, RED_MTL, GREEN_MTL, BLUE_MTL, REFLECTION_MTL);
 
 // scene
 const Plane b_plane = Plane(vec3(0.0, 1.0, 0.0), -10.0);
@@ -28,7 +27,7 @@ const Plane l_plane = Plane(vec3(1.0, 0.0, 0.0), -10.0);
 const Plane r_plane = Plane(vec3(-1.0, 0.0, 0.0), -10.0);
 const Plane t_plane = Plane(vec3(0.0, -1.0, 0.0), -10.0);
 const Plane[6] planes = Plane[](b_plane, d_plane, f_plane, l_plane, r_plane, t_plane);
-const int[6] p_mtl_ids = int[](1, 4, 1,2, 3, 1);
+const int[6] p_mtl_ids = int[](1, 4, 1, 2, 3, 1);
 
 Sphere light_sphere = Sphere(vec3(8.0, 8.0, 12.0), 0.5);
 MandelBox mb = MandelBox(2.8, 0.5, 1.0, 10);
