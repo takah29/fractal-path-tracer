@@ -162,3 +162,83 @@ void update_hp(in MandelBox mb, in Ray ray, in float t, in int color_id, inout H
         normal = get_normal(mb, ray.o + t * ray.d);
     }
 }
+
+// Mandelbulb
+struct Mandelbulb {
+    float power;
+    int iterations;
+};
+float distance_estimate(in Mandelbulb mb, in vec3 p, out vec4 res_color) {
+    vec3 w = p;
+    float m = dot(w, w);
+
+    vec4 trap = vec4(abs(w), m);
+    float dz = 1.0;
+
+    for (int i = 0; i < mb.iterations; i++) {
+        // trigonometric version
+
+        // dz = 8*z^7*dz
+        dz = 8.0 * pow(m, 3.5) * dz + 1.0;
+        // dz = 8.0*pow(sqrt(m),7.0)*dz + 1.0;
+
+        // z = z^8+z
+        float r = length(w);
+        float b = mb.power * acos(w.y / r);
+        float a = mb.power * atan(w.x, w.z);
+        w = p + pow(r, 8.0) * vec3(sin(b) * sin(a), cos(b), sin(b) * cos(a));
+
+        trap = min(trap, vec4(abs(w), m));
+
+        m = dot(w, w);
+        if (m > 256.0) break;
+    }
+
+    res_color = vec4(m, trap.yzw);
+
+    // distance estimation (through the Hubbard-Douady potential)
+    return 0.25 * log(m) * sqrt(m) / dz;
+}
+vec3 trap_to_color(in vec4 trap, in vec3 lowcol, in vec3 middlecol, in vec3 highcol) {
+    vec3 color = vec3(0.01);
+    color = mix(color, lowcol, clamp(trap.y, 0.0, 1.0));
+    color = mix(color, middlecol, clamp(trap.z * trap.z, 0.0, 1.0));
+    color = mix(color, highcol, clamp(pow(trap.w, 6.0), 0.0, 1.0));
+    color *= 5.0;
+    return color;
+}
+float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, inout vec4 res_color) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos, res_color);
+        t += d;
+        pos = ray.o + t * ray.d;
+
+        // hit check
+        if (abs(d) < t * 0.0005) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in Mandelbulb mb, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    vec4 dummy_res_color;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep, dummy_res_color) +
+                     e.yyx * distance_estimate(mb, p + e.yyx * ep, dummy_res_color) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep, dummy_res_color) +
+                     e.xxx * distance_estimate(mb, p + e.xxx * ep, dummy_res_color));
+}
+void update_hp(in Mandelbulb mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d);
+    }
+}
