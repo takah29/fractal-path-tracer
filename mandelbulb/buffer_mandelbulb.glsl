@@ -34,9 +34,9 @@ Sphere light_sphere = Sphere(vec3(0.0, 4.0, 0.0), 1.0);
 Mandelbulb mb = Mandelbulb(8.0, 12);
 
 // Mandelbulb color definition
-const vec3 lowcol = vec3(0.1, 0.2, 0.3);
-const vec3 middlecol = vec3(0.2,0.1, 0.3);
-const vec3 highcol = vec3(0.3, 0.03, 0.02);
+const vec3 lowcol = vec3(0.1, 0.2, 0.4);
+const vec3 middlecol = vec3(0.1, 0.1, 0.3);
+const vec3 highcol = vec3(0.3, 0.05, 0.02);
 
 HitPoint intersect_scene(in Ray ray, inout vec3 normal) {
     HitPoint hp = HitPoint(INF, -1);
@@ -50,7 +50,7 @@ HitPoint intersect_scene(in Ray ray, inout vec3 normal) {
     vec4 res_color;
     t = intersect(mb, ray, 256, res_color);
     vec3 col = trap_to_color(res_color, lowcol, middlecol, highcol);
-    Material mtl = Material(vec4(col, 0.3), 2);
+    Material mtl = Material(vec4(col, 0.0), 1);
     materials[6] = mtl;
     update_hp(mb, ray, t, 6, hp, normal);
 
