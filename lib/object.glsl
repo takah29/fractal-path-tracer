@@ -129,7 +129,7 @@ float distance_estimate(in MandelBox mb, in vec3 p) {
     float r = length(z);
     return r / abs(dr);
 }
-
+#define MAX_RAY_LENGTH_BOX 30.0
 float intersect(in MandelBox mb, in Ray ray, in int n_iter) {
     float d = 0.0;
     float t = 0.0;
@@ -140,8 +140,12 @@ float intersect(in MandelBox mb, in Ray ray, in int n_iter) {
     for (s = 0; s < n_iter; s++) {
         d = distance_estimate(mb, pos);
         t += d;
-        pos = ray.o + t * ray.d;
 
+        if (t > MAX_RAY_LENGTH_BOX) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
         // hit check
         if (abs(d) < t * 0.001) {
             return t;
@@ -207,6 +211,7 @@ vec3 trap_to_color(in vec4 trap, in vec3 lowcol, in vec3 middlecol, in vec3 high
     color *= 5.0;
     return color;
 }
+#define MAX_RAY_LENGTH_BULB 10.0
 float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, inout vec4 res_color) {
     float d = 0.0;
     float t = 0.0;
@@ -217,7 +222,12 @@ float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, inout vec4 res_colo
     for (s = 0; s < n_iter; s++) {
         d = distance_estimate(mb, pos, res_color);
         t += d;
-        pos = ray.o + t * ray.d;
+
+        if (t > MAX_RAY_LENGTH_BULB) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
 
         // hit check
         if (abs(d) < t * 0.0005) {
