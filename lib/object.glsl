@@ -94,7 +94,7 @@ void update_hp(in Torus torus, in Ray ray, in float t, in int color_id, inout Hi
     }
 }
 
-// MandelBox
+// MandelBox (Ray marching)
 struct MandelBox {
     float scale;
     float min_radius;
@@ -167,7 +167,7 @@ void update_hp(in MandelBox mb, in Ray ray, in float t, in int color_id, inout H
     }
 }
 
-// Mandelbulb
+// Mandelbulb (Ray marching)
 struct Mandelbulb {
     float power;
     int iterations;
@@ -250,5 +250,80 @@ void update_hp(in Mandelbulb mb, in Ray ray, in float t, in int color_id, inout 
     if (t > EPS && t < hp.t) {
         hp = HitPoint(t, color_id);
         normal = get_normal(mb, ray.o + t * ray.d);
+    }
+}
+
+// Juliabulb (Ray marching)
+#define DERIVATIVE_BIAS 0.3
+float distance_estimate(in Mandelbulb mb, in vec3 p, in vec3 c, out vec4 res_color) {
+    vec3 z = p;
+    float m = dot(z, z);
+    vec4 trap = vec4(abs(z), m);
+    float dz = 1.0;
+
+    for (int i = 0; i < mb.iterations; i++) {
+        // dz = 8*z^7*dz
+        // estimation tweak (https://www.shadertoy.com/view/MdSBDR)
+        dz = max(dz * DERIVATIVE_BIAS, 8.0 * pow(m, 3.5) * dz);
+        // dz = 8.0 * pow(m, 3.5) * dz;
+
+        // z = z^8+z
+        float r = length(z);
+        float b = mb.power * acos(clamp(z.y / r, -1.0, 1.0));
+        float a = mb.power * atan(z.x, z.z);
+        z = pow(r, 8.0) * vec3(sin(b) * sin(a), cos(b), sin(b) * cos(a)) + c;
+
+        // orbit trapping
+        trap = min(trap, vec4(abs(z), m));
+
+        m = dot(z, z);
+        if (m > 4.0) break;
+    }
+
+    res_color = trap;
+
+    float w = length(z);
+    return 0.5 * w * log(w) / dz;
+}
+#define MAX_RAY_LENGTH_BULB 10.0
+float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, in vec3 c, inout vec4 res_color) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos, c, res_color);
+        t += d;
+
+        if (t > MAX_RAY_LENGTH_BULB) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
+
+        // hit check
+        if (abs(d) < t * 0.0005) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in Mandelbulb mb, in vec3 p, in vec3 c) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    vec4 dummy_res_color;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep, c, dummy_res_color) +
+                     e.yyx * distance_estimate(mb, p + e.yyx * ep, c, dummy_res_color) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep, c, dummy_res_color) +
+                     e.xxx * distance_estimate(mb, p + e.xxx * ep, c, dummy_res_color));
+}
+void update_hp(in Mandelbulb mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal,
+               in vec3 c) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d, c);
     }
 }
