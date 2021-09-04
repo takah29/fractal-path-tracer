@@ -8,7 +8,7 @@
 
 // scene parameters
 const int SAMPLES = 1;
-const int MAX_DEPTH = 5;
+const int MAX_DEPTH = 6;
 
 // material
 const Material LIGHT_MTL = Material(vec4(vec3(20.0, 15.0, 10.0), 1.0), 0);
