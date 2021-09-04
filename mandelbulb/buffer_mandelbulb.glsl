@@ -1,7 +1,7 @@
 #iChannel0 "self"
 #include "../lib/object.glsl"
 
-#iUniform float dist = 1.0 in{0.5, 5.0 }
+#iUniform float dist = 1.0 in{0.5, 3.0 }
 #iUniform float focal_length = 0.5 in{0.001, 5.0 }
 #iUniform float dof_size = 0.005 in{0.001, 0.5 }
 #iUniform float light_emission = 1.0 in{0.001, 5. }
@@ -37,6 +37,7 @@ Mandelbulb mb = Mandelbulb(8.0, 12);
 const vec3 lowcol = vec3(0.1, 0.2, 0.4);
 const vec3 middlecol = vec3(0.1, 0.1, 0.3);
 const vec3 highcol = vec3(0.3, 0.05, 0.02);
+Material mb_mtl = Material(vec4(0.0), 1);
 
 HitPoint intersect_scene(in Ray ray, inout vec3 normal) {
     HitPoint hp = HitPoint(INF, -1);
@@ -50,8 +51,8 @@ HitPoint intersect_scene(in Ray ray, inout vec3 normal) {
     vec4 res_color;
     t = intersect(mb, ray, 256, res_color);
     vec3 col = trap_to_color(res_color, lowcol, middlecol, highcol);
-    Material mtl = Material(vec4(col, 0.0), 1);
-    materials[6] = mtl;
+    mb_mtl.color_param = vec4(col, 0.0);
+    materials[6] = mb_mtl;
     update_hp(mb, ray, t, 6, hp, normal);
 
     t = intersect(light_sphere, ray);
