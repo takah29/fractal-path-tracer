@@ -3,8 +3,8 @@
 
 #iUniform float dist = 1.0 in{0.5, 3.0 }
 #iUniform float focal_length = 0.5 in{0.001, 5.0 }
-#iUniform float dof_size = 0.005 in{0.001, 0.5 }
-#iUniform float light_emission = 1.0 in{0.001, 5. }
+#iUniform float dof_size = 0.005 in{0.0, 0.5 }
+#iUniform float light_emission = 2.0 in{0.001, 5. }
 
 // scene parameters
 const int SAMPLES = 1;
@@ -134,13 +134,15 @@ vec3 render(in vec2 p, in Camera camera, in float seed) {
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 q = fragCoord.xy / iResolution.xy;
-
-    vec2 p = -1.0 + 2.0 * (fragCoord.xy) / iResolution.xy;
-    p.x *= iResolution.x / iResolution.y;
+    vec2 dxdy = 1.0 / iResolution.xy;
+    vec2 p = 2.0 * fragCoord.xy * dxdy - 1.0;
 
     // noise
     float seed = p.x + p.y * 3.43121412313 + fract(1.12345314312 * iTime);
+
+    // stratified sampling
+    p = p + 2. * (hash2(seed) - 0.5) * dxdy;
+    p.x *= iResolution.x / iResolution.y;
 
     vec2 mouse = (iMouse.xy / iResolution.xy) * 6.0 - 3.0;
     vec3 c_pos = vec3(-mouse, dist);

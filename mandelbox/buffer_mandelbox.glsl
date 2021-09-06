@@ -2,9 +2,9 @@
 #include "../lib/object.glsl"
 
 #iUniform float dist = 5.0 in{2.0, 20.0 }
-#iUniform float focal_length = 1.0 in{0.001, 20.0 }
-#iUniform float dof_size = 0.005 in{0.001, 0.5 }
-#iUniform float light_emission = 10.0 in{0.001, 30. }
+#iUniform float focal_length = 3.0 in{0.001, 20.0 }
+#iUniform float dof_size = 0.01 in{0.0, 0.5 }
+#iUniform float light_emission = 20.0 in{0.001, 30. }
 
 // scene parameters
 const int SAMPLES = 1;
@@ -16,7 +16,7 @@ const Material WHITE_MTL = Material(vec4(WHITE, 0.0), 1);
 const Material RED_MTL = Material(vec4(RED * 0.7 + 0.1, 0.0), 1);
 const Material GREEN_MTL = Material(vec4(GREEN * 0.7 + 0.1, 0.0), 1);
 const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.3, 0.0), 1);
-const Material REFLECTION_MTL = Material(vec4(YELLOW, 0.99), 2);
+const Material REFLECTION_MTL = Material(vec4(YELLOW * 0.2 + 0.05, 0.9), 2);
 Material[6] materials = Material[](LIGHT_MTL, WHITE_MTL, RED_MTL, GREEN_MTL, BLUE_MTL, REFLECTION_MTL);
 
 // scene
@@ -53,7 +53,7 @@ HitPoint intersect_scene(in Ray ray, inout vec3 normal) {
 bool intersect_shadow(in Ray ray, in float dist) {
     float t;
 
-    t = intersect(mb, ray, 64);
+    t = intersect(mb, ray, 128);
     if (t > EPS && t < dist) return true;
 
     return false;
@@ -122,13 +122,15 @@ vec3 render(in vec2 p, in Camera camera, in float seed) {
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 q = fragCoord.xy / iResolution.xy;
-
-    vec2 p = -1.0 + 2.0 * (fragCoord.xy) / iResolution.xy;
-    p.x *= iResolution.x / iResolution.y;
+    vec2 dxdy = 1.0 / iResolution.xy;
+    vec2 p = 2.0 * fragCoord.xy * dxdy - 1.0;
 
     // noise
     float seed = p.x + p.y * 3.43121412313 + fract(1.12345314312 * iTime);
+
+    // stratified sampling
+    p = p + 2. * (hash2(seed) - 0.5) * dxdy;
+    p.x *= iResolution.x / iResolution.y;
 
     vec2 mouse = (iMouse.xy / iResolution.xy) * 15.0 - 7.5;
     vec3 c_pos = vec3(-mouse, dist);
