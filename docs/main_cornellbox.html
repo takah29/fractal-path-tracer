@@ -1,0 +1,1992 @@
+<head>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #canvas {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            position: fixed;
+            position: relative;
+        }
+        
+        .error {
+            font-family: Consolas;
+            font-size: 1.2em;
+            color: black;
+            box-sizing: border-box;
+            background-color: lightcoral;
+            border-radius: 2px;
+            border-color: lightblue;
+            border-width: thin;
+            border-style: solid;
+            line-height: 1.4em;
+            cursor:pointer;
+        }
+        .error:hover {
+            color: black;
+            background-color: brown;
+            border-color: blue;
+        }
+        #message {
+            font-family: Consolas;
+            font-size: 1.2em;
+            color: #ccc;
+            background-color: black;
+            font-weight: bold;
+            z-index: 2;
+            position: absolute;
+        }
+
+        #dat_gui_container {
+            position: absolute;
+            left: 0px;   /* position inside relatively positioned parent */
+            top: 0px;
+            z-index: 3;   /* adjust as needed */
+        }
+
+        /* Pause Button Style */
+        
+        /* Screenshot Button Style */
+
+        /* Reload Button Style */
+    </style>
+</head>
+<body>
+    <div id="message"></div>
+    <div id="dat_gui_container"></div>
+    <div id="container">
+        <!-- Pause Element -->
+    </div>
+    <!-- Screenshot Element -->
+    <!-- Reload Element -->
+</body>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/110/three.min.js"></script>
+<!-- Stats.js -->
+<!-- dat.gui -->
+<script src='https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.6/dat.gui.min.js'></script>
+
+<canvas id="canvas"></canvas>
+
+<!-- Shaders -->
+<script id='/home/taka/workspace/program/glsl/fractal-path-tracer/lib/utils.glsl' type='x-shader/x-fragment'>#version 300 es
+    precision highp float;
+    uniform vec3        iResolution;
+uniform float       iTime;
+uniform float       iTimeDelta;
+uniform int         iFrame;
+uniform vec4        iDate;
+uniform vec3        iChannelResolution[10];
+uniform vec4        iMouse;
+uniform vec4        iMouseButton;
+uniform sampler2D   iChannel0;
+uniform sampler2D   iChannel1;
+uniform sampler2D   iChannel2;
+uniform sampler2D   iChannel3;
+uniform sampler2D   iChannel4;
+uniform sampler2D   iChannel5;
+uniform sampler2D   iChannel6;
+uniform sampler2D   iChannel7;
+uniform sampler2D   iChannel8;
+uniform sampler2D   iChannel9;
+uniform sampler2D   iKeyboard;
+uniform float       iSampleRate;
+
+#define iGlobalTime iTime
+#define iGlobalFrame iFrame
+
+#define SHADER_TOY
+uniform int SAMPLES;
+uniform float speed;
+uniform float focal_length;
+uniform float dof_size;
+uniform float light_emission;
+
+    #define EPS 0.0001
+#define INF 1e20
+#define PI 3.14159265
+
+const vec3 RED = vec3(1.0, 0.0, 0.0);
+const vec3 GREEN = vec3(0.0, 1.0, 0.0);
+const vec3 BLUE = vec3(0.0, 0.0, 1.0);
+const vec3 CYAN = vec3(0.0, 1.0, 1.0);
+const vec3 MAGENTA = vec3(1.0, 0.0, 1.0);
+const vec3 YELLOW = vec3(1.0, 1.0, 0.0);
+const vec3 WHITE = vec3(1.0, 1.0, 1.0);
+const vec3 GRAY = vec3(0.5, 0.5, 0.5);
+const vec3 BLACK = vec3(0.0, 0.0, 0.0);
+
+struct Camera {
+    vec3 pos;
+    vec3 dir;
+    vec3 right;
+    vec3 top;
+    float angle;
+};
+
+struct Ray {
+    vec3 o;
+    vec3 d;
+};
+
+struct Material {
+    vec4 color_param;  // vec3: Color, float: Material specific parameter
+    int type;          // 0: emission, 1: diffuse, 2: reflection, 3: refrection,
+};
+
+struct HitPoint {
+    float t;
+    int mtl_id;  // -1:background
+};
+
+// random
+float hash1(inout float seed) { return fract(sin(seed += 0.1) * 43758.5453123); }
+vec2 hash2(inout float seed) { return fract(sin(vec2(seed += 0.1, seed += 0.1)) * vec2(43758.5453123, 22578.1459123)); }
+vec3 hash3(inout float seed) {
+    return fract(sin(vec3(seed += 0.1, seed += 0.1, seed += 0.1)) * vec3(43758.5453123, 22578.1459123, 19642.3490423));
+}
+
+// sampling
+vec3 cos_weighted_random_hemisphere_direction(const vec3 n, inout float seed) {
+    vec2 r = hash2(seed);
+
+    vec3 uu = normalize(cross(n, vec3(0.0, 1.0, 1.0)));
+    vec3 vv = cross(uu, n);
+
+    float ra = sqrt(r.y);
+    float rx = ra * cos(6.2831 * r.x);
+    float ry = ra * sin(6.2831 * r.x);
+    float rz = sqrt(1.0 - r.y);
+    vec3 rr = vec3(rx * uu + ry * vv + rz * n);
+
+    return normalize(rr);
+}
+
+vec3 random_sphere_direction(inout float seed) {
+    vec2 h = hash2(seed) * vec2(2., 6.28318530718) - vec2(1, 0);
+    float phi = h.y;
+    return vec3(sqrt(1. - h.x * h.x) * vec2(sin(phi), cos(phi)), h.x);
+}
+
+vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
+    vec2 r = hash2(seed);
+    return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
+}
+
+vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
+                  inout float seed) {
+    specular_bounce = false;
+
+    if (mtl.type == 2) {  // reflaction
+        vec3 ref;
+        if (hash1(seed) < mtl.color_param.w) {
+            specular_bounce = true;
+            ref = reflect(ray_dir, normal);
+        } else {
+            ref = cos_weighted_random_hemisphere_direction(normal, seed);
+        }
+        return ref;
+    } else if (mtl.type == 3) {  // refraction
+        specular_bounce = true;
+
+        float n1, n2, ndotr = dot(ray_dir, normal);
+
+        if (ndotr > 0.) {
+            n1 = 1.0;
+            n2 = mtl.color_param.w;
+            normal = -normal;
+        } else {
+            n1 = mtl.color_param.w;
+            n2 = 1.0;
+        }
+
+        float r0 = (n1 - n2) / (n1 + n2);
+        r0 *= r0;
+        float fresnel = r0 + (1. - r0) * pow(1.0 - abs(ndotr), 5.);
+
+        vec3 ref;
+        if (hash1(seed) < fresnel) {
+            ref = reflect(ray_dir, normal);
+        }else{
+            ref = refract(ray_dir, normal, n2 / n1);
+        }
+
+        return ref;
+    } else {  // diffuse
+        return cos_weighted_random_hemisphere_direction(normal, seed);
+    }
+}
+
+void look_at_origin(inout Camera camera, in vec3 pos) {
+    camera.pos = pos;
+    camera.dir = -normalize(camera.pos);
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    camera.right = normalize(cross(camera.dir, up));
+    camera.top = normalize(cross(camera.right, camera.dir));
+}
+
+Ray get_ray(in Camera camera, in vec2 coord) {
+    float fov = camera.angle * 0.5 * PI / 180.0;
+    float sin_fov = sin(fov);
+    vec3 dir = normalize(camera.dir * cos(fov) + camera.right * coord.x * sin_fov + camera.top * coord.y * sin_fov);
+    return Ray(camera.pos, dir);
+}
+
+    void main() {}
+</script><script id='/home/taka/workspace/program/glsl/fractal-path-tracer/lib/object.glsl' type='x-shader/x-fragment'>#version 300 es
+    precision highp float;
+    uniform vec3        iResolution;
+uniform float       iTime;
+uniform float       iTimeDelta;
+uniform int         iFrame;
+uniform vec4        iDate;
+uniform vec3        iChannelResolution[10];
+uniform vec4        iMouse;
+uniform vec4        iMouseButton;
+uniform sampler2D   iChannel0;
+uniform sampler2D   iChannel1;
+uniform sampler2D   iChannel2;
+uniform sampler2D   iChannel3;
+uniform sampler2D   iChannel4;
+uniform sampler2D   iChannel5;
+uniform sampler2D   iChannel6;
+uniform sampler2D   iChannel7;
+uniform sampler2D   iChannel8;
+uniform sampler2D   iChannel9;
+uniform sampler2D   iKeyboard;
+uniform float       iSampleRate;
+
+#define iGlobalTime iTime
+#define iGlobalFrame iFrame
+
+#define SHADER_TOY
+uniform int SAMPLES;
+uniform float speed;
+uniform float focal_length;
+uniform float dof_size;
+uniform float light_emission;
+
+    #define EPS 0.0001
+#define INF 1e20
+#define PI 3.14159265
+
+const vec3 RED = vec3(1.0, 0.0, 0.0);
+const vec3 GREEN = vec3(0.0, 1.0, 0.0);
+const vec3 BLUE = vec3(0.0, 0.0, 1.0);
+const vec3 CYAN = vec3(0.0, 1.0, 1.0);
+const vec3 MAGENTA = vec3(1.0, 0.0, 1.0);
+const vec3 YELLOW = vec3(1.0, 1.0, 0.0);
+const vec3 WHITE = vec3(1.0, 1.0, 1.0);
+const vec3 GRAY = vec3(0.5, 0.5, 0.5);
+const vec3 BLACK = vec3(0.0, 0.0, 0.0);
+
+struct Camera {
+    vec3 pos;
+    vec3 dir;
+    vec3 right;
+    vec3 top;
+    float angle;
+};
+
+struct Ray {
+    vec3 o;
+    vec3 d;
+};
+
+struct Material {
+    vec4 color_param;  // vec3: Color, float: Material specific parameter
+    int type;          // 0: emission, 1: diffuse, 2: reflection, 3: refrection,
+};
+
+struct HitPoint {
+    float t;
+    int mtl_id;  // -1:background
+};
+
+// random
+float hash1(inout float seed) { return fract(sin(seed += 0.1) * 43758.5453123); }
+vec2 hash2(inout float seed) { return fract(sin(vec2(seed += 0.1, seed += 0.1)) * vec2(43758.5453123, 22578.1459123)); }
+vec3 hash3(inout float seed) {
+    return fract(sin(vec3(seed += 0.1, seed += 0.1, seed += 0.1)) * vec3(43758.5453123, 22578.1459123, 19642.3490423));
+}
+
+// sampling
+vec3 cos_weighted_random_hemisphere_direction(const vec3 n, inout float seed) {
+    vec2 r = hash2(seed);
+
+    vec3 uu = normalize(cross(n, vec3(0.0, 1.0, 1.0)));
+    vec3 vv = cross(uu, n);
+
+    float ra = sqrt(r.y);
+    float rx = ra * cos(6.2831 * r.x);
+    float ry = ra * sin(6.2831 * r.x);
+    float rz = sqrt(1.0 - r.y);
+    vec3 rr = vec3(rx * uu + ry * vv + rz * n);
+
+    return normalize(rr);
+}
+
+vec3 random_sphere_direction(inout float seed) {
+    vec2 h = hash2(seed) * vec2(2., 6.28318530718) - vec2(1, 0);
+    float phi = h.y;
+    return vec3(sqrt(1. - h.x * h.x) * vec2(sin(phi), cos(phi)), h.x);
+}
+
+vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
+    vec2 r = hash2(seed);
+    return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
+}
+
+vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
+                  inout float seed) {
+    specular_bounce = false;
+
+    if (mtl.type == 2) {  // reflaction
+        vec3 ref;
+        if (hash1(seed) < mtl.color_param.w) {
+            specular_bounce = true;
+            ref = reflect(ray_dir, normal);
+        } else {
+            ref = cos_weighted_random_hemisphere_direction(normal, seed);
+        }
+        return ref;
+    } else if (mtl.type == 3) {  // refraction
+        specular_bounce = true;
+
+        float n1, n2, ndotr = dot(ray_dir, normal);
+
+        if (ndotr > 0.) {
+            n1 = 1.0;
+            n2 = mtl.color_param.w;
+            normal = -normal;
+        } else {
+            n1 = mtl.color_param.w;
+            n2 = 1.0;
+        }
+
+        float r0 = (n1 - n2) / (n1 + n2);
+        r0 *= r0;
+        float fresnel = r0 + (1. - r0) * pow(1.0 - abs(ndotr), 5.);
+
+        vec3 ref;
+        if (hash1(seed) < fresnel) {
+            ref = reflect(ray_dir, normal);
+        }else{
+            ref = refract(ray_dir, normal, n2 / n1);
+        }
+
+        return ref;
+    } else {  // diffuse
+        return cos_weighted_random_hemisphere_direction(normal, seed);
+    }
+}
+
+void look_at_origin(inout Camera camera, in vec3 pos) {
+    camera.pos = pos;
+    camera.dir = -normalize(camera.pos);
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    camera.right = normalize(cross(camera.dir, up));
+    camera.top = normalize(cross(camera.right, camera.dir));
+}
+
+Ray get_ray(in Camera camera, in vec2 coord) {
+    float fov = camera.angle * 0.5 * PI / 180.0;
+    float sin_fov = sin(fov);
+    vec3 dir = normalize(camera.dir * cos(fov) + camera.right * coord.x * sin_fov + camera.top * coord.y * sin_fov);
+    return Ray(camera.pos, dir);
+}
+
+
+// Sphere
+struct Sphere {
+    vec3 center;
+    float radius;
+};
+
+float intersect(in Sphere sphere, in Ray ray) {
+    vec3 oc = ray.o - sphere.center;
+    float b = dot(oc, ray.d);
+    float c = dot(oc, oc) - sphere.radius * sphere.radius;
+    float h = b * b - c;
+    if (h < 0.0) return -1.0;
+
+    float s = sqrt(h);
+    float t1 = -b - s;
+    float t2 = -b + s;
+
+    return t1 < 0.0 ? t2 : t1;
+}
+
+vec3 get_normal(in Sphere sphere, in vec3 p) { return normalize(p - sphere.center); }
+
+void update_hp(in Sphere sphere, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(sphere, ray.o + t * ray.d);
+    }
+}
+
+vec3 sample_light(in Sphere point_light, inout float seed) {
+    vec3 n = random_sphere_direction(seed) * point_light.radius;
+    return point_light.center + n;
+}
+
+// Plane
+struct Plane {
+    vec3 normal;
+    float h;
+};
+
+float intersect(in Plane plane, in Ray ray) { return (plane.h - dot(plane.normal, ray.o)) / dot(plane.normal, ray.d); }
+
+vec3 get_normal(in Plane plane) { return plane.normal; }
+
+void update_hp(in Plane plane, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(plane);
+    }
+}
+
+// Torus (Ray marching)
+struct Torus {
+    vec3 center;
+    float radius_a;
+    float radius_b;
+};
+float distance_func(in Torus torus, in vec3 p) {
+    vec2 q = vec2(length(p.xz - torus.center.xz) - torus.radius_a, p.y - torus.center.y);
+    return length(q) - torus.radius_b;
+}
+float intersect(in Torus torus, in Ray ray, in int n_iter) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_func(torus, pos);
+        t += d;
+        pos = ray.o + t * ray.d;
+
+        // hit check
+        if (abs(d) < 0.0001) {
+            break;
+        }
+    }
+
+    return t;
+}
+vec3 get_normal(in Torus torus, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    return normalize(e.xyy * distance_func(torus, p + e.xyy * ep) + e.yyx * distance_func(torus, p + e.yyx * ep) +
+                     e.yxy * distance_func(torus, p + e.yxy * ep) + e.xxx * distance_func(torus, p + e.xxx * ep));
+}
+void update_hp(in Torus torus, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(torus, ray.o + t * ray.d);
+    }
+}
+
+// MandelBox (Ray marching)
+struct MandelBox {
+    float scale;
+    float min_radius;
+    float fixed_radius;
+    int iterations;
+};
+float distance_estimate(in MandelBox mb, in vec3 p) {
+    vec3 z = p;
+    float dr = 1.0;
+    for (int i = 0; i < mb.iterations; i++) {
+        // Box Fold
+        float folding_limit = 1.0;
+        z = clamp(z, -folding_limit, folding_limit) * 2.0 - z;
+
+        // Sphere Fold
+        float m2 = mb.min_radius * mb.min_radius;
+        float f2 = mb.fixed_radius * mb.fixed_radius;
+        float r2 = dot(z, z);
+        if (r2 < m2) {
+            float temp = (f2 / m2);
+            z *= temp;
+            dr *= temp;
+        } else if (r2 < f2) {
+            float temp = (f2 / r2);
+            z *= temp;
+            dr *= temp;
+        }
+
+        z = mb.scale * z + p;
+        dr = dr * abs(mb.scale) + 1.0;
+    }
+    float r = length(z);
+    return r / abs(dr);
+}
+#define MAX_RAY_LENGTH_BOX 30.0
+float intersect(in MandelBox mb, in Ray ray, in int n_iter) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos);
+        t += d;
+
+        if (t > MAX_RAY_LENGTH_BOX) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
+        // hit check
+        if (abs(d) < t * 0.001) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in MandelBox mb, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep) + e.yyx * distance_estimate(mb, p + e.yyx * ep) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep) + e.xxx * distance_estimate(mb, p + e.xxx * ep));
+}
+void update_hp(in MandelBox mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d);
+    }
+}
+
+// Mandelbulb (Ray marching)
+struct Mandelbulb {
+    float power;
+    int iterations;
+};
+float distance_estimate(in Mandelbulb mb, in vec3 p, out vec4 res_color) {
+    vec3 w = p;
+    float m = dot(w, w);
+
+    vec4 trap = vec4(abs(w), m);
+    float dz = 1.0;
+
+    for (int i = 0; i < mb.iterations; i++) {
+        // trigonometric version
+
+        // dz = 8*z^7*dz
+        dz = 8.0 * pow(m, 3.5) * dz + 1.0;
+        // dz = 8.0*pow(sqrt(m),7.0)*dz + 1.0;
+
+        // z = z^8+z
+        float r = length(w);
+        float b = mb.power * acos(w.y / r);
+        float a = mb.power * atan(w.x, w.z);
+        w = p + pow(r, 8.0) * vec3(sin(b) * sin(a), cos(b), sin(b) * cos(a));
+
+        trap = min(trap, vec4(abs(w), m));
+
+        m = dot(w, w);
+        if (m > 256.0) break;
+    }
+
+    res_color = vec4(m, trap.yzw);
+
+    // distance estimation (through the Hubbard-Douady potential)
+    return 0.25 * log(m) * sqrt(m) / dz;
+}
+vec3 trap_to_color(in vec4 trap, in vec3 lowcol, in vec3 middlecol, in vec3 highcol) {
+    vec3 color = vec3(0.01);
+    color = mix(color, lowcol, clamp(trap.y, 0.0, 1.0));
+    color = mix(color, middlecol, clamp(trap.z * trap.z, 0.0, 1.0));
+    color = mix(color, highcol, clamp(pow(trap.w, 6.0), 0.0, 1.0));
+    color *= 5.0;
+    return color;
+}
+#define MAX_RAY_LENGTH_BULB 10.0
+float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, inout vec4 res_color) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos, res_color);
+        t += d;
+
+        if (t > MAX_RAY_LENGTH_BULB) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
+
+        // hit check
+        if (abs(d) < t * 0.0005) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in Mandelbulb mb, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    vec4 dummy_res_color;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep, dummy_res_color) +
+                     e.yyx * distance_estimate(mb, p + e.yyx * ep, dummy_res_color) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep, dummy_res_color) +
+                     e.xxx * distance_estimate(mb, p + e.xxx * ep, dummy_res_color));
+}
+void update_hp(in Mandelbulb mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d);
+    }
+}
+
+// Juliabulb (Ray marching)
+#define DERIVATIVE_BIAS 0.3
+float distance_estimate(in Mandelbulb mb, in vec3 p, in vec3 c, out vec4 res_color) {
+    vec3 z = p;
+    float m = dot(z, z);
+    vec4 trap = vec4(abs(z), m);
+    float dz = 1.0;
+
+    for (int i = 0; i < mb.iterations; i++) {
+        // dz = 8*z^7*dz
+        // estimation tweak (https://www.shadertoy.com/view/MdSBDR)
+        dz = max(dz * DERIVATIVE_BIAS, 8.0 * pow(m, 3.5) * dz);
+        // dz = 8.0 * pow(m, 3.5) * dz;
+
+        // z = z^8+z
+        float r = length(z);
+        float b = mb.power * acos(clamp(z.y / r, -1.0, 1.0));
+        float a = mb.power * atan(z.x, z.z);
+        z = pow(r, 8.0) * vec3(sin(b) * sin(a), cos(b), sin(b) * cos(a)) + c;
+
+        // orbit trapping
+        trap = min(trap, vec4(abs(z), m));
+
+        m = dot(z, z);
+        if (m > 4.0) break;
+    }
+
+    res_color = trap;
+
+    float w = length(z);
+    return 0.5 * w * log(w) / dz;
+}
+#define MAX_RAY_LENGTH_BULB 10.0
+float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, in vec3 c, inout vec4 res_color) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos, c, res_color);
+        t += d;
+
+        if (t > MAX_RAY_LENGTH_BULB) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
+
+        // hit check
+        if (abs(d) < t * 0.0005) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in Mandelbulb mb, in vec3 p, in vec3 c) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    vec4 dummy_res_color;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep, c, dummy_res_color) +
+                     e.yyx * distance_estimate(mb, p + e.yyx * ep, c, dummy_res_color) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep, c, dummy_res_color) +
+                     e.xxx * distance_estimate(mb, p + e.xxx * ep, c, dummy_res_color));
+}
+void update_hp(in Mandelbulb mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal,
+               in vec3 c) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d, c);
+    }
+}
+
+    void main() {}
+</script>
+<script id='/home/taka/workspace/program/glsl/fractal-path-tracer/cornellbox/main_cornellbox.glsl' type='x-shader/x-fragment'>
+uniform vec3        iResolution;
+uniform float       iTime;
+uniform float       iTimeDelta;
+uniform int         iFrame;
+uniform vec4        iDate;
+uniform vec3        iChannelResolution[10];
+uniform vec4        iMouse;
+uniform vec4        iMouseButton;
+uniform sampler2D   iChannel0;
+uniform sampler2D   iChannel1;
+uniform sampler2D   iChannel2;
+uniform sampler2D   iChannel3;
+uniform sampler2D   iChannel4;
+uniform sampler2D   iChannel5;
+uniform sampler2D   iChannel6;
+uniform sampler2D   iChannel7;
+uniform sampler2D   iChannel8;
+uniform sampler2D   iChannel9;
+uniform sampler2D   iKeyboard;
+uniform float       iSampleRate;
+
+#define iGlobalTime iTime
+#define iGlobalFrame iFrame
+
+#define SHADER_TOY
+uniform int SAMPLES;
+uniform float speed;
+uniform float focal_length;
+uniform float dof_size;
+uniform float light_emission;
+
+
+#define EPS 0.0001
+#define INF 1e20
+#define PI 3.14159265
+
+const vec3 RED = vec3(1.0, 0.0, 0.0);
+const vec3 GREEN = vec3(0.0, 1.0, 0.0);
+const vec3 BLUE = vec3(0.0, 0.0, 1.0);
+const vec3 CYAN = vec3(0.0, 1.0, 1.0);
+const vec3 MAGENTA = vec3(1.0, 0.0, 1.0);
+const vec3 YELLOW = vec3(1.0, 1.0, 0.0);
+const vec3 WHITE = vec3(1.0, 1.0, 1.0);
+const vec3 GRAY = vec3(0.5, 0.5, 0.5);
+const vec3 BLACK = vec3(0.0, 0.0, 0.0);
+
+struct Camera {
+    vec3 pos;
+    vec3 dir;
+    vec3 right;
+    vec3 top;
+    float angle;
+};
+
+struct Ray {
+    vec3 o;
+    vec3 d;
+};
+
+struct Material {
+    vec4 color_param;  // vec3: Color, float: Material specific parameter
+    int type;          // 0: emission, 1: diffuse, 2: reflection, 3: refrection,
+};
+
+struct HitPoint {
+    float t;
+    int mtl_id;  // -1:background
+};
+
+// random
+float hash1(inout float seed) { return fract(sin(seed += 0.1) * 43758.5453123); }
+vec2 hash2(inout float seed) { return fract(sin(vec2(seed += 0.1, seed += 0.1)) * vec2(43758.5453123, 22578.1459123)); }
+vec3 hash3(inout float seed) {
+    return fract(sin(vec3(seed += 0.1, seed += 0.1, seed += 0.1)) * vec3(43758.5453123, 22578.1459123, 19642.3490423));
+}
+
+// sampling
+vec3 cos_weighted_random_hemisphere_direction(const vec3 n, inout float seed) {
+    vec2 r = hash2(seed);
+
+    vec3 uu = normalize(cross(n, vec3(0.0, 1.0, 1.0)));
+    vec3 vv = cross(uu, n);
+
+    float ra = sqrt(r.y);
+    float rx = ra * cos(6.2831 * r.x);
+    float ry = ra * sin(6.2831 * r.x);
+    float rz = sqrt(1.0 - r.y);
+    vec3 rr = vec3(rx * uu + ry * vv + rz * n);
+
+    return normalize(rr);
+}
+
+vec3 random_sphere_direction(inout float seed) {
+    vec2 h = hash2(seed) * vec2(2., 6.28318530718) - vec2(1, 0);
+    float phi = h.y;
+    return vec3(sqrt(1. - h.x * h.x) * vec2(sin(phi), cos(phi)), h.x);
+}
+
+vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
+    vec2 r = hash2(seed);
+    return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
+}
+
+vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
+                  inout float seed) {
+    specular_bounce = false;
+
+    if (mtl.type == 2) {  // reflaction
+        vec3 ref;
+        if (hash1(seed) < mtl.color_param.w) {
+            specular_bounce = true;
+            ref = reflect(ray_dir, normal);
+        } else {
+            ref = cos_weighted_random_hemisphere_direction(normal, seed);
+        }
+        return ref;
+    } else if (mtl.type == 3) {  // refraction
+        specular_bounce = true;
+
+        float n1, n2, ndotr = dot(ray_dir, normal);
+
+        if (ndotr > 0.) {
+            n1 = 1.0;
+            n2 = mtl.color_param.w;
+            normal = -normal;
+        } else {
+            n1 = mtl.color_param.w;
+            n2 = 1.0;
+        }
+
+        float r0 = (n1 - n2) / (n1 + n2);
+        r0 *= r0;
+        float fresnel = r0 + (1. - r0) * pow(1.0 - abs(ndotr), 5.);
+
+        vec3 ref;
+        if (hash1(seed) < fresnel) {
+            ref = reflect(ray_dir, normal);
+        }else{
+            ref = refract(ray_dir, normal, n2 / n1);
+        }
+
+        return ref;
+    } else {  // diffuse
+        return cos_weighted_random_hemisphere_direction(normal, seed);
+    }
+}
+
+void look_at_origin(inout Camera camera, in vec3 pos) {
+    camera.pos = pos;
+    camera.dir = -normalize(camera.pos);
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    camera.right = normalize(cross(camera.dir, up));
+    camera.top = normalize(cross(camera.right, camera.dir));
+}
+
+Ray get_ray(in Camera camera, in vec2 coord) {
+    float fov = camera.angle * 0.5 * PI / 180.0;
+    float sin_fov = sin(fov);
+    vec3 dir = normalize(camera.dir * cos(fov) + camera.right * coord.x * sin_fov + camera.top * coord.y * sin_fov);
+    return Ray(camera.pos, dir);
+}
+
+
+// Sphere
+struct Sphere {
+    vec3 center;
+    float radius;
+};
+
+float intersect(in Sphere sphere, in Ray ray) {
+    vec3 oc = ray.o - sphere.center;
+    float b = dot(oc, ray.d);
+    float c = dot(oc, oc) - sphere.radius * sphere.radius;
+    float h = b * b - c;
+    if (h < 0.0) return -1.0;
+
+    float s = sqrt(h);
+    float t1 = -b - s;
+    float t2 = -b + s;
+
+    return t1 < 0.0 ? t2 : t1;
+}
+
+vec3 get_normal(in Sphere sphere, in vec3 p) { return normalize(p - sphere.center); }
+
+void update_hp(in Sphere sphere, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(sphere, ray.o + t * ray.d);
+    }
+}
+
+vec3 sample_light(in Sphere point_light, inout float seed) {
+    vec3 n = random_sphere_direction(seed) * point_light.radius;
+    return point_light.center + n;
+}
+
+// Plane
+struct Plane {
+    vec3 normal;
+    float h;
+};
+
+float intersect(in Plane plane, in Ray ray) { return (plane.h - dot(plane.normal, ray.o)) / dot(plane.normal, ray.d); }
+
+vec3 get_normal(in Plane plane) { return plane.normal; }
+
+void update_hp(in Plane plane, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(plane);
+    }
+}
+
+// Torus (Ray marching)
+struct Torus {
+    vec3 center;
+    float radius_a;
+    float radius_b;
+};
+float distance_func(in Torus torus, in vec3 p) {
+    vec2 q = vec2(length(p.xz - torus.center.xz) - torus.radius_a, p.y - torus.center.y);
+    return length(q) - torus.radius_b;
+}
+float intersect(in Torus torus, in Ray ray, in int n_iter) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_func(torus, pos);
+        t += d;
+        pos = ray.o + t * ray.d;
+
+        // hit check
+        if (abs(d) < 0.0001) {
+            break;
+        }
+    }
+
+    return t;
+}
+vec3 get_normal(in Torus torus, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    return normalize(e.xyy * distance_func(torus, p + e.xyy * ep) + e.yyx * distance_func(torus, p + e.yyx * ep) +
+                     e.yxy * distance_func(torus, p + e.yxy * ep) + e.xxx * distance_func(torus, p + e.xxx * ep));
+}
+void update_hp(in Torus torus, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(torus, ray.o + t * ray.d);
+    }
+}
+
+// MandelBox (Ray marching)
+struct MandelBox {
+    float scale;
+    float min_radius;
+    float fixed_radius;
+    int iterations;
+};
+float distance_estimate(in MandelBox mb, in vec3 p) {
+    vec3 z = p;
+    float dr = 1.0;
+    for (int i = 0; i < mb.iterations; i++) {
+        // Box Fold
+        float folding_limit = 1.0;
+        z = clamp(z, -folding_limit, folding_limit) * 2.0 - z;
+
+        // Sphere Fold
+        float m2 = mb.min_radius * mb.min_radius;
+        float f2 = mb.fixed_radius * mb.fixed_radius;
+        float r2 = dot(z, z);
+        if (r2 < m2) {
+            float temp = (f2 / m2);
+            z *= temp;
+            dr *= temp;
+        } else if (r2 < f2) {
+            float temp = (f2 / r2);
+            z *= temp;
+            dr *= temp;
+        }
+
+        z = mb.scale * z + p;
+        dr = dr * abs(mb.scale) + 1.0;
+    }
+    float r = length(z);
+    return r / abs(dr);
+}
+#define MAX_RAY_LENGTH_BOX 30.0
+float intersect(in MandelBox mb, in Ray ray, in int n_iter) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos);
+        t += d;
+
+        if (t > MAX_RAY_LENGTH_BOX) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
+        // hit check
+        if (abs(d) < t * 0.001) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in MandelBox mb, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep) + e.yyx * distance_estimate(mb, p + e.yyx * ep) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep) + e.xxx * distance_estimate(mb, p + e.xxx * ep));
+}
+void update_hp(in MandelBox mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d);
+    }
+}
+
+// Mandelbulb (Ray marching)
+struct Mandelbulb {
+    float power;
+    int iterations;
+};
+float distance_estimate(in Mandelbulb mb, in vec3 p, out vec4 res_color) {
+    vec3 w = p;
+    float m = dot(w, w);
+
+    vec4 trap = vec4(abs(w), m);
+    float dz = 1.0;
+
+    for (int i = 0; i < mb.iterations; i++) {
+        // trigonometric version
+
+        // dz = 8*z^7*dz
+        dz = 8.0 * pow(m, 3.5) * dz + 1.0;
+        // dz = 8.0*pow(sqrt(m),7.0)*dz + 1.0;
+
+        // z = z^8+z
+        float r = length(w);
+        float b = mb.power * acos(w.y / r);
+        float a = mb.power * atan(w.x, w.z);
+        w = p + pow(r, 8.0) * vec3(sin(b) * sin(a), cos(b), sin(b) * cos(a));
+
+        trap = min(trap, vec4(abs(w), m));
+
+        m = dot(w, w);
+        if (m > 256.0) break;
+    }
+
+    res_color = vec4(m, trap.yzw);
+
+    // distance estimation (through the Hubbard-Douady potential)
+    return 0.25 * log(m) * sqrt(m) / dz;
+}
+vec3 trap_to_color(in vec4 trap, in vec3 lowcol, in vec3 middlecol, in vec3 highcol) {
+    vec3 color = vec3(0.01);
+    color = mix(color, lowcol, clamp(trap.y, 0.0, 1.0));
+    color = mix(color, middlecol, clamp(trap.z * trap.z, 0.0, 1.0));
+    color = mix(color, highcol, clamp(pow(trap.w, 6.0), 0.0, 1.0));
+    color *= 5.0;
+    return color;
+}
+#define MAX_RAY_LENGTH_BULB 10.0
+float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, inout vec4 res_color) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos, res_color);
+        t += d;
+
+        if (t > MAX_RAY_LENGTH_BULB) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
+
+        // hit check
+        if (abs(d) < t * 0.0005) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in Mandelbulb mb, in vec3 p) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    vec4 dummy_res_color;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep, dummy_res_color) +
+                     e.yyx * distance_estimate(mb, p + e.yyx * ep, dummy_res_color) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep, dummy_res_color) +
+                     e.xxx * distance_estimate(mb, p + e.xxx * ep, dummy_res_color));
+}
+void update_hp(in Mandelbulb mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d);
+    }
+}
+
+// Juliabulb (Ray marching)
+#define DERIVATIVE_BIAS 0.3
+float distance_estimate(in Mandelbulb mb, in vec3 p, in vec3 c, out vec4 res_color) {
+    vec3 z = p;
+    float m = dot(z, z);
+    vec4 trap = vec4(abs(z), m);
+    float dz = 1.0;
+
+    for (int i = 0; i < mb.iterations; i++) {
+        // dz = 8*z^7*dz
+        // estimation tweak (https://www.shadertoy.com/view/MdSBDR)
+        dz = max(dz * DERIVATIVE_BIAS, 8.0 * pow(m, 3.5) * dz);
+        // dz = 8.0 * pow(m, 3.5) * dz;
+
+        // z = z^8+z
+        float r = length(z);
+        float b = mb.power * acos(clamp(z.y / r, -1.0, 1.0));
+        float a = mb.power * atan(z.x, z.z);
+        z = pow(r, 8.0) * vec3(sin(b) * sin(a), cos(b), sin(b) * cos(a)) + c;
+
+        // orbit trapping
+        trap = min(trap, vec4(abs(z), m));
+
+        m = dot(z, z);
+        if (m > 4.0) break;
+    }
+
+    res_color = trap;
+
+    float w = length(z);
+    return 0.5 * w * log(w) / dz;
+}
+#define MAX_RAY_LENGTH_BULB 10.0
+float intersect(in Mandelbulb mb, in Ray ray, in int n_iter, in vec3 c, inout vec4 res_color) {
+    float d = 0.0;
+    float t = 0.0;
+    vec3 pos = ray.o;
+
+    // marching loop
+    int s;
+    for (s = 0; s < n_iter; s++) {
+        d = distance_estimate(mb, pos, c, res_color);
+        t += d;
+
+        if (t > MAX_RAY_LENGTH_BULB) {
+            break;
+        }
+
+        pos = pos + d * ray.d;
+
+        // hit check
+        if (abs(d) < t * 0.0005) {
+            return t;
+        }
+    }
+
+    return INF;
+}
+vec3 get_normal(in Mandelbulb mb, in vec3 p, in vec3 c) {
+    const float ep = 0.001;
+    vec2 e = vec2(1.0, -1.0) * 0.5773;
+    vec4 dummy_res_color;
+    return normalize(e.xyy * distance_estimate(mb, p + e.xyy * ep, c, dummy_res_color) +
+                     e.yyx * distance_estimate(mb, p + e.yyx * ep, c, dummy_res_color) +
+                     e.yxy * distance_estimate(mb, p + e.yxy * ep, c, dummy_res_color) +
+                     e.xxx * distance_estimate(mb, p + e.xxx * ep, c, dummy_res_color));
+}
+void update_hp(in Mandelbulb mb, in Ray ray, in float t, in int color_id, inout HitPoint hp, inout vec3 normal,
+               in vec3 c) {
+    if (t > EPS && t < hp.t) {
+        hp = HitPoint(t, color_id);
+        normal = get_normal(mb, ray.o + t * ray.d, c);
+    }
+}
+
+
+
+
+
+
+
+
+// scene parameters
+const int MAX_DEPTH = 4;
+const float MOTIONBLURFPS = 12.;
+
+// material
+const Material LIGHT_MTL = Material(vec4(vec3(20.0, 15.0, 10.0), 1.0), 0);
+const Material WHITE_MTL = Material(vec4(GRAY, 0.0), 1);
+const Material RED_MTL = Material(vec4(RED * 0.7 + 0.1, 0.0), 1);
+const Material GREEN_MTL = Material(vec4(GREEN * 0.7 + 0.1, 0.0), 1);
+const Material BLUE_MTL = Material(vec4(BLUE * 0.7 + 0.3, 0.0), 1);
+const Material REFLECTION_MTL = Material(vec4(CYAN, 0.3), 2);
+const Material REFRACTION_MTL = Material(vec4(vec3(0.7, 0.5, 1.0), 1.5), 3);
+Material[7] materials = Material[](LIGHT_MTL, WHITE_MTL, RED_MTL, GREEN_MTL, BLUE_MTL, REFLECTION_MTL, REFRACTION_MTL);
+
+// scene
+const Plane b_plane = Plane(vec3(0.0, 1.0, 0.0), -3.0);
+const Plane d_plane = Plane(vec3(0.0, 0.0, 1.0), -5.0);
+const Plane l_plane = Plane(vec3(1.0, 0.0, 0.0), -3.0);
+const Plane t_plane = Plane(vec3(0.0, -1.0, 0.0), -3.0);
+const Plane r_plane = Plane(vec3(-1.0, 0.0, 0.0), -3.0);
+const Plane[5] planes = Plane[](b_plane, d_plane, l_plane, t_plane, r_plane);
+const int[5] p_mtl_ids = int[](1, 4, 2, 1, 3);
+
+const Sphere l_sphere = Sphere(vec3(-1.0, -2.0, -1.0), 1.0);
+const Sphere r_sphere = Sphere(vec3(1.5, -2.0, 0.0), 1.0);
+const Sphere[2] spheres = Sphere[](l_sphere, r_sphere);
+const int[2] s_mtl_ids = int[](6, 5);
+
+Sphere light_sphere = Sphere(vec3(0.0), 0.5);
+Torus torus = Torus(vec3(0.0, -1.0, 2.), 1.5, 0.5);
+
+void set_light_pos(float time) {
+    float t = time * speed;
+    light_sphere.center = vec3(2. * sin(t), 2. * sin(t * 0.9), 3. * cos(t * 0.7));
+}
+
+HitPoint intersect_scene(in Ray ray, inout vec3 normal) {
+    HitPoint hp = HitPoint(INF, -1);
+    float t;
+
+    for (int i = 0; i < planes.length(); i++) {
+        t = intersect(planes[i], ray);
+        update_hp(planes[i], t, p_mtl_ids[i], hp, normal);
+    }
+    for (int i = 0; i < spheres.length(); i++) {
+        t = intersect(spheres[i], ray);
+        update_hp(spheres[i], ray, t, s_mtl_ids[i], hp, normal);
+    }
+
+    t = intersect(light_sphere, ray);
+    update_hp(r_sphere, ray, t, 0, hp, normal);
+
+    return hp;
+}
+
+bool intersect_shadow(in Ray ray, in float dist) {
+    float t;
+
+    t = intersect(l_sphere, ray);
+    if (t > EPS && t < dist) return true;
+    t = intersect(r_sphere, ray);
+    if (t > EPS && t < dist) return true;
+
+    return false;
+}
+
+vec3 path_trace(in Ray ray, inout float seed) {
+    vec3 tcol = vec3(0.);
+    vec3 fcol = vec3(1.);
+    bool specular_bounce = true;
+
+    for (int depth = 0; depth < MAX_DEPTH; depth++) {
+        vec3 normal;
+        HitPoint hp = intersect_scene(ray, normal);
+
+        // background
+        if (hp.mtl_id == -1) {
+            return tcol;
+        }
+
+        // light
+        if (materials[hp.mtl_id].type == 0) {  // emission
+            if (specular_bounce) tcol += fcol * materials[hp.mtl_id].color_param.rgb * light_emission;
+            return tcol;
+        }
+
+        // indirect
+        ray.o = ray.o + hp.t * ray.d;
+        ray.d = get_brdf_ray(normal, ray.d, materials[hp.mtl_id], specular_bounce, seed);
+
+        if (!specular_bounce || dot(ray.d, normal) < 0.) {
+            fcol *= materials[hp.mtl_id].color_param.rgb;
+        }
+
+        // direct light sampling
+        vec3 ld = sample_light(light_sphere, seed) - ray.o;
+        vec3 nld = normalize(ld);
+        bool is_shadow = intersect_shadow(Ray(ray.o, nld), length(ld));
+        if (!specular_bounce && depth < (MAX_DEPTH - 1) && !is_shadow) {
+            float tmp = light_sphere.radius * light_sphere.radius /
+                        dot(light_sphere.center - ray.o, light_sphere.center - ray.o);
+            float cos_a_max = sqrt(1. - clamp(tmp, 0., 1.));
+            float weight = 2. * (1. - cos_a_max);
+
+            tcol +=
+                (fcol * materials[0].color_param.rgb * light_emission) * (weight * clamp(dot(nld, normal), 0., 1.));
+        }
+    }
+    return tcol;
+}
+
+vec3 render(in vec2 p, in Camera camera, in float seed) {
+    vec3 color = vec3(0.0);
+    for (int a = 0; a < SAMPLES; a++) {
+        Ray ray = get_ray(camera, p);
+
+        // depth of field
+        vec3 fp = ray.o + ray.d * focal_length;
+        ray.o = sample_lens(camera, seed, dof_size);
+        ray.d = normalize(fp - ray.o);
+
+        // motion blur
+        set_light_pos(iTime + hash1(seed) / MOTIONBLURFPS);
+
+        color += path_trace(ray, seed);
+        seed = mod(seed * 1.1234567893490423, 13.);
+    }
+
+    color /= float(SAMPLES);
+    return color;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 dxdy = 1.0 / iResolution.xy;
+    vec2 p = 2.0 * fragCoord.xy * dxdy - 1.0;
+
+    // noise
+    float seed = p.x + p.y * 3.43121412313 + fract(1.12345314312 * iTime);
+
+    // stratified sampling
+    p = p + 2. * (hash2(seed) - 0.5) * dxdy;
+    p.x *= iResolution.x / iResolution.y;
+
+    vec2 mouse = (iMouse.xy / iResolution.xy) * 6.0 - 3.0;
+    vec3 c_pos = vec3(-mouse, 8.0);
+    vec3 dir = vec3(0.0, 0.0, -1.0);
+    vec3 right = vec3(1.0, 0.0, 0.0);
+    vec3 top = vec3(0.0, 1.0, 0.0);
+
+    Camera camera = Camera(c_pos, dir, right, top, 50.0);
+    look_at_origin(camera, c_pos);
+
+    vec3 color = render(p, camera, seed);
+    color = pow(clamp(color, 0.0, 1.0), vec3(0.45));
+
+    fragColor = vec4(color, 1.0);
+}
+void main() {
+    vec2 fragCoord = gl_FragCoord.xy;
+    mainImage(gl_FragColor, fragCoord);
+}
+</script>
+
+<script type="text/javascript">
+    let vscode = undefined;
+    if (typeof acquireVsCodeApi === 'function') {
+        vscode = acquireVsCodeApi();
+    }
+    var compileTimePanel;
+
+    let revealError = function(line, file) {
+        if (vscode) {
+            vscode.postMessage({
+                command: 'showGlslsError',
+                line: line,
+                file: file
+            });
+        }
+    };
+
+    let currentShader = {};
+    // Error Callback
+    console.error = function () {
+        if('7' in arguments) {
+            let errorRegex = /ERROR: \d+:(\d+):\W(.*)\n/g;
+            let rawErrors = arguments[7];
+            let match;
+            
+            let diagnostics = [];
+            let message = '';
+            while(match = errorRegex.exec(rawErrors)) {
+                let lineNumber = Number(match[1]) - currentShader.LineOffset;
+                let error = match[2];
+                diagnostics.push({
+                    line: lineNumber,
+                    message: error
+                });
+                let lineHighlight = `<a class='error' unselectable onclick='revealError(${lineNumber}, "${currentShader.File}")'>Line ${lineNumber}</a>`;
+                message += `<li>${lineHighlight}: ${error}</li>`;
+            }
+            console.log(message);
+            let diagnosticBatch = {
+                filename: currentShader.File,
+                diagnostics: diagnostics
+            };
+            if (vscode !== undefined) {
+                vscode.postMessage({
+                    command: 'showGlslDiagnostic',
+                    type: 'error',
+                    diagnosticBatch: diagnosticBatch
+                });
+            }
+    
+            $('#message').append(`<h3>Shader failed to compile - ${currentShader.Name} </h3>`);
+            $('#message').append('<ul>');
+            $('#message').append(message);
+            $('#message').append('</ul>');
+        }
+    };
+
+    // Development feature: Output warnings from third-party libraries
+    // console.warn = function (message) {
+    //     $("#message").append(message + '<br>');
+    // };
+
+    let clock = new THREE.Clock();
+    let pausedTime = 0.0;
+    let deltaTime = 0.0;
+    let startingTime = 0;
+    let time = startingTime;
+
+    let date = new THREE.Vector4();
+
+    let updateDate = function() {
+        let today = new Date();
+        date.x = today.getFullYear();
+        date.y = today.getMonth();
+        date.z = today.getDate();
+        date.w = today.getHours() * 60 * 60 
+            + today.getMinutes() * 60
+            + today.getSeconds()
+            + today.getMilliseconds() * 0.001;
+    };
+    updateDate();
+
+    let paused = false;
+    let pauseButton = document.getElementById('pause-button');
+    if (pauseButton) {
+        pauseButton.onclick = function(){
+            paused = pauseButton.checked;
+            if (!paused) {
+                // Audio Resume
+                pausedTime += clock.getDelta();
+            }
+            else {
+                // Audio Pause
+            }
+        };
+    }
+    
+    {
+        let screenshotButton = document.getElementById("screenshot");
+        if (screenshotButton) {
+            screenshotButton.addEventListener('click', saveScreenshot);
+        }
+    }
+    
+    {
+        let reloadButton = document.getElementById("reload");
+        if (reloadButton) {
+            reloadButton.addEventListener('click', reloadWebview);
+        }
+    }
+    
+    window.addEventListener('message', event => {
+        const message = event.data; // The JSON data our extension sent
+        switch (message.command) {
+            case 'pause':
+                if (pauseButton) {
+                    pauseButton.checked = !pauseButton.checked;
+                }
+                paused = !paused;
+                if (!paused) {
+                    // Audio Resume
+                    pausedTime += clock.getDelta();
+                }
+                else {
+                    // Audio Pause
+                }
+                break;
+            case 'screenshot':
+                saveScreenshot();
+                break;
+        }
+    });
+
+    let canvas = document.getElementById('canvas');
+    let gl = canvas.getContext('webgl2');
+    let isWebGL2 = gl != null;
+    if (gl == null) gl = canvas.getContext('webgl');
+    let supportsFloatFramebuffer = (gl.getExtension('EXT_color_buffer_float') != null) || (gl.getExtension('WEBGL_color_buffer_float') != null);
+    let supportsHalfFloatFramebuffer = (gl.getExtension('EXT_color_buffer_half_float') != null);
+    let framebufferType = THREE.UnsignedByteType;
+    if (supportsFloatFramebuffer) framebufferType = THREE.FloatType;
+    else if (supportsHalfFloatFramebuffer) framebufferType = THREE.HalfFloatType;
+
+    let renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, context: gl, preserveDrawingBuffer: true });
+    let resolution = new THREE.Vector3();
+    let mouse = new THREE.Vector4(679, 353, -681, -400);
+    let mouseButton = new THREE.Vector4(0, 0, 0, 0);
+    let normalizedMouse = new THREE.Vector2(0.42140221402214023, 0.189873417721519);
+    let frameCounter = 0;
+
+    // Audio Init
+    const audioContext = {
+        sampleRate: 0
+    };
+    // Audio Resume
+
+    let buffers = [];
+    // Buffers
+    buffers.push({
+        Name: '/home/taka/workspace/program/glsl/fractal-path-tracer/cornellbox/main_cornellbox.glsl',
+        File: '/home/taka/workspace/program/glsl/fractal-path-tracer/cornellbox/main_cornellbox.glsl',
+        LineOffset: 596,
+        Target: null,
+        ChannelResolution: Array(10).fill(new THREE.Vector3(0,0,0)),
+        PingPongTarget: null,
+        PingPongChannel: 0,
+        Dependents: [],
+        Shader: new THREE.ShaderMaterial({
+            fragmentShader: document.getElementById('/home/taka/workspace/program/glsl/fractal-path-tracer/cornellbox/main_cornellbox.glsl').textContent,
+            depthWrite: false,
+            depthTest: false,
+            uniforms: {
+                iResolution: { type: 'v3', value: resolution },
+                iTime: { type: 'f', value: 0.0 },
+                iTimeDelta: { type: 'f', value: 0.0 },
+                iFrame: { type: 'i', value: 0 },
+                iMouse: { type: 'v4', value: mouse },
+                iMouseButton: { type: 'v2', value: mouseButton },
+    
+                iChannelResolution: { type: 'v3v', value: Array(10).fill(new THREE.Vector3(0,0,0)) },
+    
+                iDate: { type: 'v4', value: date },
+                iSampleRate: { type: 'f', value: audioContext.sampleRate },
+    
+                iChannel0: { type: 't' },
+                iChannel1: { type: 't' },
+                iChannel2: { type: 't' },
+                iChannel3: { type: 't' },
+                iChannel4: { type: 't' },
+                iChannel5: { type: 't' },
+                iChannel6: { type: 't' },
+                iChannel7: { type: 't' },
+                iChannel8: { type: 't' },
+                iChannel9: { type: 't' },
+    
+                resolution: { type: 'v2', value: resolution },
+                time: { type: 'f', value: 0.0 },
+                mouse: { type: 'v2', value: normalizedMouse },
+            }
+        })
+    });
+    let commonIncludes = [];
+    // Includes
+    commonIncludes.push({
+        Name: '/home/taka/workspace/program/glsl/fractal-path-tracer/lib/utils.glsl',
+        File: '/home/taka/workspace/program/glsl/fractal-path-tracer/lib/utils.glsl'
+    });commonIncludes.push({
+        Name: '/home/taka/workspace/program/glsl/fractal-path-tracer/lib/object.glsl',
+        File: '/home/taka/workspace/program/glsl/fractal-path-tracer/lib/object.glsl'
+    });
+
+    // WebGL2 inserts more lines into the shader
+    if (isWebGL2) {
+        for (let buffer of buffers) {
+            buffer.LineOffset += 16;
+        }
+    }
+
+    // Keyboard Init
+    
+    // Uniforms Init
+    
+    let dat_gui = new dat.GUI({ autoPlace: false, closed: false });
+    var dat_gui_container = document.getElementById('dat_gui_container');
+    dat_gui_container.appendChild(dat_gui.domElement);
+    buffers[0].UniformValues = {};
+    buffers[0].UniformValues.SAMPLES = 12;
+    {
+        let controller = dat_gui.add(buffers[0].UniformValues, 'SAMPLES').min(2).max(200).step(1);
+        controller.onFinishChange((value) => {
+            if (vscode !== undefined) {
+                vscode.postMessage({
+                    command: 'updateUniformsGuiValue',
+                    name: 'SAMPLES',
+                    value: [ value ]
+                });
+            }
+        });
+    }
+    
+    buffers[0].UniformValues.speed = 4;
+    {
+        let controller = dat_gui.add(buffers[0].UniformValues, 'speed').min(0).max(50);
+        controller.onFinishChange((value) => {
+            if (vscode !== undefined) {
+                vscode.postMessage({
+                    command: 'updateUniformsGuiValue',
+                    name: 'speed',
+                    value: [ value ]
+                });
+            }
+        });
+    }
+    
+    buffers[0].UniformValues.focal_length = 9.5;
+    {
+        let controller = dat_gui.add(buffers[0].UniformValues, 'focal_length').min(1).max(20);
+        controller.onFinishChange((value) => {
+            if (vscode !== undefined) {
+                vscode.postMessage({
+                    command: 'updateUniformsGuiValue',
+                    name: 'focal_length',
+                    value: [ value ]
+                });
+            }
+        });
+    }
+    
+    buffers[0].UniformValues.dof_size = 0.5;
+    {
+        let controller = dat_gui.add(buffers[0].UniformValues, 'dof_size').min(0).max(2);
+        controller.onFinishChange((value) => {
+            if (vscode !== undefined) {
+                vscode.postMessage({
+                    command: 'updateUniformsGuiValue',
+                    name: 'dof_size',
+                    value: [ value ]
+                });
+            }
+        });
+    }
+    
+    buffers[0].UniformValues.light_emission = 1;
+    {
+        let controller = dat_gui.add(buffers[0].UniformValues, 'light_emission').min(0).max(10);
+        controller.onFinishChange((value) => {
+            if (vscode !== undefined) {
+                vscode.postMessage({
+                    command: 'updateUniformsGuiValue',
+                    name: 'light_emission',
+                    value: [ value ]
+                });
+            }
+        });
+    }
+    
+    
+    // Uniforms Update
+    buffers[0].Shader.uniforms.SAMPLES = { type: 'f', value: buffers[0].UniformValues.SAMPLES };
+    buffers[0].Shader.uniforms.speed = { type: 'f', value: buffers[0].UniformValues.speed };
+    buffers[0].Shader.uniforms.focal_length = { type: 'f', value: buffers[0].UniformValues.focal_length };
+    buffers[0].Shader.uniforms.dof_size = { type: 'f', value: buffers[0].UniformValues.dof_size };
+    buffers[0].Shader.uniforms.light_emission = { type: 'f', value: buffers[0].UniformValues.light_emission };
+    if (vscode !== undefined) {
+        vscode.postMessage({
+            command: 'updateUniformsGuiOpen',
+            value: !dat_gui.closed
+        });
+    }
+    
+
+    let texLoader = new THREE.TextureLoader();
+    // Texture Init
+    
+
+    let scene = new THREE.Scene();
+    let quad = new THREE.Mesh(
+        new THREE.PlaneGeometry(resolution.x, resolution.y),
+        null
+    );
+    scene.add(quad);
+    
+    let camera = new THREE.OrthographicCamera(-resolution.x / 2.0, resolution.x / 2.0, resolution.y / 2.0, -resolution.y / 2.0, 1, 1000);
+    camera.position.set(0, 0, 10);
+
+    // Run every shader once to check for compile errors
+    let compileTimeStart = performance.now();
+    let failed=0;
+    for (let include of commonIncludes) {
+        currentShader = {
+            Name: include.Name,
+            File: include.File,
+            // add two for version and precision lines
+            LineOffset: 31 + 2
+        };
+        // bail if there is an error found in the include script
+        if(compileFragShader(gl, document.getElementById(include.Name).textContent) == false) {
+            throw Error(`Failed to compile ${include.Name}`);
+        }
+    }
+
+    for (let buffer of buffers) {
+        currentShader = {
+            Name: buffer.Name,
+            File: buffer.File,
+            LineOffset: buffer.LineOffset
+        };
+        quad.material = buffer.Shader;
+        renderer.setRenderTarget(buffer.Target);
+        renderer.render(scene, camera);
+    }
+    currentShader = {};
+    let compileTimeEnd = performance.now();
+    let compileTime = compileTimeEnd - compileTimeStart;
+    if (compileTimePanel !== undefined) {
+        for (let i = 0; i < 200; i++) {
+            compileTimePanel.update(compileTime, 200);
+        }
+    }
+
+    computeSize();
+    render();
+
+    function addLineNumbers( string ) {
+        let lines = string.split( '\\n' );
+        for ( let i = 0; i < lines.length; i ++ ) {
+            lines[ i ] = ( i + 1 ) + ': ' + lines[ i ];
+        }
+        return lines.join( '\\n' );
+    }
+
+    function compileFragShader(gl, fsSource) {
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+            const fragmentLog = gl.getShaderInfoLog(fs);
+            console.error( 'THREE.WebGLProgram: shader error: ', gl.getError(), 'gl.COMPILE_STATUS', null, null, null, null, fragmentLog );
+            return false;
+        }
+        return true;
+    }
+
+    function render() {
+        requestAnimationFrame(render);
+        // Pause Whole Render
+        if (paused) return;
+
+        // Advance Time
+        deltaTime = clock.getDelta();
+        time = startingTime + clock.getElapsedTime() - pausedTime;
+        updateDate();
+
+        // Audio Update
+
+        for (let buffer of buffers) {
+            buffer.Shader.uniforms['iResolution'].value = resolution;
+            buffer.Shader.uniforms['iTimeDelta'].value = deltaTime;
+            buffer.Shader.uniforms['iTime'].value = time;
+            buffer.Shader.uniforms['iFrame'].value = frameCounter;
+            buffer.Shader.uniforms['iMouse'].value = mouse;
+            buffer.Shader.uniforms['iMouseButton'].value = mouseButton;
+
+            buffer.Shader.uniforms['resolution'].value = resolution;
+            buffer.Shader.uniforms['time'].value = time;
+            buffer.Shader.uniforms['mouse'].value = normalizedMouse;
+
+            quad.material = buffer.Shader;
+            renderer.setRenderTarget(buffer.Target);
+            renderer.render(scene, camera);
+        }
+        
+        // Uniforms Update
+        buffers[0].Shader.uniforms.SAMPLES = { type: 'f', value: buffers[0].UniformValues.SAMPLES };
+        buffers[0].Shader.uniforms.speed = { type: 'f', value: buffers[0].UniformValues.speed };
+        buffers[0].Shader.uniforms.focal_length = { type: 'f', value: buffers[0].UniformValues.focal_length };
+        buffers[0].Shader.uniforms.dof_size = { type: 'f', value: buffers[0].UniformValues.dof_size };
+        buffers[0].Shader.uniforms.light_emission = { type: 'f', value: buffers[0].UniformValues.light_emission };
+        if (vscode !== undefined) {
+            vscode.postMessage({
+                command: 'updateUniformsGuiOpen',
+                value: !dat_gui.closed
+            });
+        }
+        
+
+        // Keyboard Update
+
+        for (let buffer of buffers) {
+            if (buffer.PingPongTarget) {
+                [buffer.PingPongTarget, buffer.Target] = [buffer.Target, buffer.PingPongTarget];
+                buffer.Shader.uniforms[`iChannel${buffer.PingPongChannel}`].value = buffer.PingPongTarget.texture;
+                for (let dependent of buffer.Dependents) {
+                    const dependentBuffer = buffers[dependent.Index];
+                    dependentBuffer.Shader.uniforms[`iChannel${dependent.Channel}`].value = buffer.Target.texture;
+                }
+            }
+        }
+
+        frameCounter++;
+    }
+    function computeSize() {
+        let forceAspectRatio = (width, height) => {
+            // Forced aspect ratio
+            let forcedAspects = [0,0];
+            let forcedAspectRatio = forcedAspects[0] / forcedAspects[1];
+            let aspectRatio = width / height;
+
+            if (forcedAspectRatio <= 0 || !isFinite(forcedAspectRatio)) {
+                let resolution = new THREE.Vector3(width, height, 1.0);
+                return resolution;
+            }
+            else if (aspectRatio < forcedAspectRatio) {
+                let resolution = new THREE.Vector3(width, Math.floor(width / forcedAspectRatio), 1);
+                return resolution;
+            }
+            else {
+                let resolution = new THREE.Vector3(Math.floor(height * forcedAspectRatio), height, 1);
+                return resolution;
+            }
+        };
+        
+        // Compute forced aspect ratio and align canvas
+        resolution = forceAspectRatio(window.innerWidth, window.innerHeight);
+        canvas.style.left = `${(window.innerWidth - resolution.x) / 2}px`;
+        canvas.style.top = `${(window.innerHeight - resolution.y) / 2}px`;
+
+        for (let buffer of buffers) {
+            if (buffer.Target) {
+                buffer.Target.setSize(resolution.x, resolution.y);
+            }
+            if (buffer.PingPongTarget) {
+                buffer.PingPongTarget.setSize(resolution.x, resolution.y);
+            }
+        }
+        renderer.setSize(resolution.x, resolution.y, false);
+        
+        // Update Camera and Mesh
+        quad.geometry = new THREE.PlaneGeometry(resolution.x, resolution.y);
+        camera.left = -resolution.x / 2.0;
+        camera.right = resolution.x / 2.0;
+        camera.top = resolution.y / 2.0;
+        camera.bottom = -resolution.y / 2.0;
+        camera.updateProjectionMatrix();
+
+        // Reset iFrame on resize for shaders that rely on first-frame setups
+        frameCounter = 0;
+    }
+    function saveScreenshot() {
+        let doSaveScreenshot = () => {
+            renderer.domElement.toBlob(function(blob){
+                let a = document.createElement('a');
+                let url = URL.createObjectURL(blob);
+                a.href = url;
+                a.download = 'shadertoy.png';
+                a.click();
+            }, 'image/png', 1.0);
+        };
+
+        let forcedScreenshotResolution = [0,0];
+        if (forcedScreenshotResolution[0] <= 0 || forcedScreenshotResolution[1] <= 0) {
+            renderer.render(scene, camera);
+            doSaveScreenshot();
+        }
+        else {
+            renderer.setSize(forcedScreenshotResolution[0], forcedScreenshotResolution[1], false);
+            
+            for (let buffer of buffers) {
+                buffer.Shader.uniforms['iResolution'].value = new THREE.Vector3(forcedScreenshotResolution[0], forcedScreenshotResolution[1], 1);
+                buffer.Shader.uniforms['resolution'].value = new THREE.Vector3(forcedScreenshotResolution[0], forcedScreenshotResolution[1], 1);
+
+                quad.material = buffer.Shader;
+                renderer.setRenderTarget(buffer.Target);
+                renderer.render(scene, camera);
+            }
+
+            doSaveScreenshot();
+            renderer.setSize(resolution.x, resolution.y, false);
+        }
+    }
+    function reloadWebview() {
+        if (vscode !== undefined) {
+            vscode.postMessage({ command: 'reloadWebview' });
+        }
+    }
+    function updateMouse() {
+        if (vscode !== undefined) {
+            vscode.postMessage({
+                command: 'updateMouse',
+                mouse: {
+                    x: mouse.x,
+                    y: mouse.y,
+                    z: mouse.z,
+                    w: mouse.w
+                },
+                normalizedMouse: {
+                    x: normalizedMouse.x,
+                    y: normalizedMouse.y
+                }
+            });
+        }
+    }
+    let dragging = false;
+    function updateNormalizedMouseCoordinates(clientX, clientY) {
+        let rect = canvas.getBoundingClientRect();
+        let mouseX = clientX - rect.left;
+        let mouseY = resolution.y - clientY - rect.top;
+
+        if (mouseButton.x + mouseButton.y != 0) {
+            mouse.x = mouseX;
+            mouse.y = mouseY;
+        }
+
+        normalizedMouse.x = mouseX / resolution.x;
+        normalizedMouse.y = mouseY / resolution.y;
+    }
+    canvas.addEventListener('mousemove', function(evt) {
+        updateNormalizedMouseCoordinates(evt.clientX, evt.clientY);
+        updateMouse();
+    }, false);
+    canvas.addEventListener('mousedown', function(evt) {
+        if (evt.button == 0)
+            mouseButton.x = 1;
+        if (evt.button == 2)
+            mouseButton.y = 1;
+
+        if (!dragging) {
+            updateNormalizedMouseCoordinates(evt.clientX, evt.clientY);
+            mouse.z = mouse.x;
+            mouse.w = mouse.y;
+            dragging = true
+        }
+
+        updateMouse();
+    }, false);
+    canvas.addEventListener('mouseup', function(evt) {
+        if (evt.button == 0)
+            mouseButton.x = 0;
+        if (evt.button == 2)
+            mouseButton.y = 0;
+
+        dragging = false;
+        mouse.z = -mouse.z;
+        mouse.w = -mouse.w;
+
+        updateMouse();
+    }, false);
+    window.addEventListener('resize', function() {
+        computeSize();
+    });
+
+    // Keyboard Callbacks
+</script>
