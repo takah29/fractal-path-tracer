@@ -2,7 +2,7 @@
 #include "../lib/object.glsl"
 
 #iUniform float dist = 5.0 in{2.0, 20.0 }
-#iUniform float focal_length = 3.0 in{0.001, 20.0 }
+#iUniform float focal_length = 5.0 in{0.001, 20.0 }
 #iUniform float dof_size = 0.01 in{0.0, 0.5 }
 #iUniform float light_emission = 20.0 in{0.001, 30. }
 
