@@ -16,7 +16,15 @@
 * GLSL 4.6
 * Shader Toy v0.10.15 (Visual Studio Code Extension)
 
-## Screenshot
+## WebGL Demo
+
+GeForce GTX 1080 or higher recommended.
+
+* [Cornell box](https://takah29.github.io/fractal-path-tracer/main_cornellbox.html)
+* [Mandelbox](https://takah29.github.io/fractal-path-tracer/main_mandelbox.html)
+* [Mandelbulb](https://takah29.github.io/fractal-path-tracer/main_mandelbulb.html)
+
+## Screenshots
 
 ![Mandelbox](fig/jpg/mandelbox01.jpg)
 ![Mandelbox](fig/jpg/mandelbox02.jpg)
@@ -34,3 +42,7 @@
 ![Mandelbulb](fig/jpg/mandelbulb4.jpg)
 ![Mandelbulb](fig/jpg/mandelbulb5.jpg)
 ![Mandelbulb](fig/jpg/mandelbulb6.jpg)
+
+## References
+
+* [Shadertoy](https://www.shadertoy.com/)
