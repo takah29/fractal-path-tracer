@@ -177,8 +177,10 @@ vec3 random_sphere_direction(inout float seed) {
 }
 
 vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
-    vec2 r = hash2(seed);
-    return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
+    vec2 u = hash2(seed);
+    float theta = 2. * PI * u.x;
+    float r = sqrt(u.y);
+    return camera.pos + (camera.right * r * cos(theta) + camera.top * r * sin(theta)) * dof_size;
 }
 
 vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
@@ -215,7 +217,7 @@ vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, ino
         vec3 ref;
         if (hash1(seed) < fresnel) {
             ref = reflect(ray_dir, normal);
-        }else{
+        } else {
             ref = refract(ray_dir, normal, n2 / n1);
         }
 
@@ -341,8 +343,10 @@ vec3 random_sphere_direction(inout float seed) {
 }
 
 vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
-    vec2 r = hash2(seed);
-    return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
+    vec2 u = hash2(seed);
+    float theta = 2. * PI * u.x;
+    float r = sqrt(u.y);
+    return camera.pos + (camera.right * r * cos(theta) + camera.top * r * sin(theta)) * dof_size;
 }
 
 vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
@@ -379,7 +383,7 @@ vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, ino
         vec3 ref;
         if (hash1(seed) < fresnel) {
             ref = reflect(ray_dir, normal);
-        }else{
+        } else {
             ref = refract(ray_dir, normal, n2 / n1);
         }
 
@@ -835,8 +839,10 @@ vec3 random_sphere_direction(inout float seed) {
 }
 
 vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
-    vec2 r = hash2(seed);
-    return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
+    vec2 u = hash2(seed);
+    float theta = 2. * PI * u.x;
+    float r = sqrt(u.y);
+    return camera.pos + (camera.right * r * cos(theta) + camera.top * r * sin(theta)) * dof_size;
 }
 
 vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
@@ -873,7 +879,7 @@ vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, ino
         vec3 ref;
         if (hash1(seed) < fresnel) {
             ref = reflect(ray_dir, normal);
-        }else{
+        } else {
             ref = refract(ray_dir, normal, n2 / n1);
         }
 
@@ -1355,11 +1361,13 @@ vec3 render(in vec2 p, in Camera camera, in float seed) {
         ray.o = sample_lens(camera, seed, dof_size);
         ray.d = normalize(fp - ray.o);
 
+        seed = mod(seed * 1.1234567893490423, 13.);
+
         // motion blur
         set_light_pos(iTime + hash1(seed) / MOTIONBLURFPS);
 
         color += path_trace(ray, seed);
-        seed = mod(seed * 1.1234567893490423, 13.);
+
     }
 
     color /= float(SAMPLES);
@@ -1542,9 +1550,9 @@ void main() {
 
     let renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, context: gl, preserveDrawingBuffer: true });
     let resolution = new THREE.Vector3();
-    let mouse = new THREE.Vector4(679, 353, -681, -400);
+    let mouse = new THREE.Vector4(764, 179, -499, -236);
     let mouseButton = new THREE.Vector4(0, 0, 0, 0);
-    let normalizedMouse = new THREE.Vector2(0.42140221402214023, 0.189873417721519);
+    let normalizedMouse = new THREE.Vector2(0.0014705882352941176, 0.1302149178255373);
     let frameCounter = 0;
 
     // Audio Init
@@ -1558,7 +1566,7 @@ void main() {
     buffers.push({
         Name: '/home/taka/workspace/program/glsl/fractal-path-tracer/cornellbox/main_cornellbox.glsl',
         File: '/home/taka/workspace/program/glsl/fractal-path-tracer/cornellbox/main_cornellbox.glsl',
-        LineOffset: 596,
+        LineOffset: 598,
         Target: null,
         ChannelResolution: Array(10).fill(new THREE.Vector3(0,0,0)),
         PingPongTarget: null,
