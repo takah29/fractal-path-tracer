@@ -127,11 +127,13 @@ vec3 render(in vec2 p, in Camera camera, in float seed) {
         ray.o = sample_lens(camera, seed, dof_size);
         ray.d = normalize(fp - ray.o);
 
+        seed = mod(seed * 1.1234567893490423, 13.);
+
         // motion blur
         set_light_pos(iTime + hash1(seed) / MOTIONBLURFPS);
 
         color += path_trace(ray, seed);
-        seed = mod(seed * 1.1234567893490423, 13.);
+
     }
 
     color /= float(SAMPLES);

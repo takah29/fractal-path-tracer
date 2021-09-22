@@ -65,8 +65,10 @@ vec3 random_sphere_direction(inout float seed) {
 }
 
 vec3 sample_lens(in Camera camera, in float seed, in float dof_size) {
-    vec2 r = hash2(seed);
-    return camera.pos + (camera.right * r.r * cos(2. * PI * r.t) + camera.top * r.r * sin(2. * PI * r.t)) * dof_size;
+    vec2 u = hash2(seed);
+    float theta = 2. * PI * u.x;
+    float r = sqrt(u.y);
+    return camera.pos + (camera.right * r * cos(theta) + camera.top * r * sin(theta)) * dof_size;
 }
 
 vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, inout bool specular_bounce,
@@ -103,7 +105,7 @@ vec3 get_brdf_ray(vec3 normal, const in vec3 ray_dir, const in Material mtl, ino
         vec3 ref;
         if (hash1(seed) < fresnel) {
             ref = reflect(ray_dir, normal);
-        }else{
+        } else {
             ref = refract(ray_dir, normal, n2 / n1);
         }
 
